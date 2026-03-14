@@ -15,26 +15,59 @@
 
 按照 Kotlin 官方建议，优先共享业务逻辑、数据契约和状态机，UI 是否共享在产品切片稳定后再决定。
 
-## 建议结构
+## 当前结构
 
 ```text
 apps/kmp/
 ├── README.md
+├── gradle/
+├── gradlew
+├── settings.gradle.kts
+├── build.gradle.kts
+├── gradle.properties
 ├── shared-domain/   # 领域与用例
-├── shared-data/     # 网络 / 存储契约与实现
+├── shared-data/     # 数据与适配占位
 ├── androidApp/      # Android 壳
-└── iosApp/          # iOS 壳
+├── iosApp/          # iOS 壳说明
+└── docs/            # AI 交付与调试 runbook
 ```
 
 ## 当前状态
 
-- 只完成仓库入口和设计约束
-- 未初始化 Gradle Wrapper
-- 未创建真实模块
+- 已初始化 Gradle Wrapper
+- 已建立 Android-first 的 KMP 根工程骨架
+- 已建立 `shared-domain`、`shared-data`、`androidApp` 模块占位
+- `iosApp` 仍是 host shell 计划位，还没有 Xcode 工程
+- 代码目前是 bootstrap 级实现，用于承接 AI 开发闭环，不代表业务切片已完成
 
-## 下一步
+## 推荐 AI 开发顺序
 
-1. 安装 Gradle 或生成 Wrapper
-2. 初始化 KMP 根工程
-3. 先实现 S1/S2/S3 的 shared-domain 和 shared-data
-4. 再补 Android / iOS 壳
+1. 先读 `framework-agnostic-spec/`、验收报告和 parity matrix
+2. 运行 `bash ./scripts/kmp-doctor.sh`
+3. 在 `shared-domain` 落领域模型、用例和接口
+4. 在 `shared-data` 落数据实现、mock、存储和网络适配
+5. 在 `androidApp` 落 Android-first UI 壳
+6. 切片稳定后再补 `iosApp`
+7. 每次执行都回写 AI delivery log、acceptance report 和 parity matrix
+
+## 常用命令
+
+从仓库根目录执行:
+
+```bash
+bash ./scripts/kmp-doctor.sh
+./scripts/kmp-gradle-no-proxy.sh :shared-domain:allTests
+cd apps/kmp
+./gradlew doctor
+./gradlew printAiWorkflow
+./gradlew :shared-domain:allTests :shared-data:allTests
+./gradlew :androidApp:assembleDebug
+```
+
+## KMP AI Infra 入口
+
+- 交付 workflow: `apps/kmp/docs/ai-workflow.md`
+- 模块边界: `apps/kmp/docs/module-map.md`
+- 调试 runbook: `apps/kmp/docs/debug-runbook.md`
+- Agent prompt: `.agents/prompts/kmp-delivery.md`
+- 调试 prompt: `.agents/prompts/kmp-debug.md`

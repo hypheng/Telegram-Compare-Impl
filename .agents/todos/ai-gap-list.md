@@ -22,7 +22,6 @@
 
 ### 仓库级缺口
 
-- KMP 根工程和 Gradle Wrapper 还没初始化进仓库
 - CJMP 根工程和最小可运行模板还没初始化进仓库
 - Android emulator / device profile 没纳入仓库级自检
 - Telegram API / mock backend / test account 策略还没落文档
@@ -31,9 +30,12 @@
 - GitHub labels 还没在远端仓库里实际创建；issue templates 只能提供约定，不能替代仓库配置
 - AI token 用量还没有自动采集通路；当前需要手工回填或从宿主工具的 usage 信息摘录
 - 刚补齐的 acceptance report / AI delivery log / issue taxonomy 还没经过首个真实切片验证
+- KMP `./gradlew doctor` 已通过，但更重的依赖解析仍可能受到本机残留 SOCKS 代理配置影响；当前建议优先使用 `./scripts/kmp-gradle-no-proxy.sh`
 
 ### Agent 侧缺口
 
 - 重启 Codex，让新装的全局 skills 明确可见
 - 未来补真正的 Android UI 测试、截图和回归流水线
 - 如采用 Figma desktop MCP，需要本机 Figma Desktop App 与 Dev Mode 权限
+- KMP 还没有首个真实切片的 shared-domain / shared-data / androidApp 业务实现，当前仍是 bootstrap 骨架
+- KMP iOS host shell 还没有真实 Xcode 工程

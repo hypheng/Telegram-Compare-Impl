@@ -11,4 +11,4 @@
    - `ANDROID_SDK_ROOT`
    - `adb`
    - `gradle` / `cjc` / `cjpm` / `keels`
-
+5. 如为 `KMP`，优先检查 `apps/kmp/docs/`、`bash ./scripts/kmp-doctor.sh` 和 `.agents/prompts/kmp-delivery.md`

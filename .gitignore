@@ -6,8 +6,10 @@ build/
 dist/
 out/
 .gradle/
+.kotlin/
 .konan/
+gradle-9.3.1/
+local.properties
 node_modules/
 *.log
 *.iml
-

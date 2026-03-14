@@ -14,3 +14,17 @@
 - `adb`
 - Android SDK
 
+当前仓库约定:
+
+- `apps/kmp/shared-domain`: 领域对象、用例、仓储接口
+- `apps/kmp/shared-data`: mock / data 实现、存储和网络适配
+- `apps/kmp/androidApp`: Android 壳
+- `apps/kmp/iosApp`: iOS 壳计划位
+
+AI 交付顺序:
+
+1. 先读 `framework-agnostic-spec/`
+2. 再读 `apps/kmp/docs/module-map.md`
+3. 先改 `shared-domain`
+4. 再改 `shared-data`
+5. 最后改 `androidApp`
