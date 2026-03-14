@@ -1,0 +1,67 @@
+name: AI Common Friction
+description: 记录与框架无关的 AI 执行阻塞或能力缺口
+title: "[AI/Common] "
+labels:
+  - ai/common
+body:
+  - type: input
+    id: slice_id
+    attributes:
+      label: Slice ID
+      placeholder: S3
+    validations:
+      required: true
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Phase
+      options:
+        - Product / Spec
+        - UI / Interaction
+        - Implementation
+        - Debugging
+        - Review
+    validations:
+      required: true
+  - type: dropdown
+    id: issue_type
+    attributes:
+      label: Issue Type
+      options:
+        - type/spec
+        - type/ui
+        - type/debug
+        - type/tooling
+        - type/docs
+        - type/test
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction / Trigger
+      description: 描述触发步骤、上下文和最小复现条件
+    validations:
+      required: true
+  - type: textarea
+    id: expected_actual
+    attributes:
+      label: Expected vs Actual
+      description: 说明预期结果、实际结果和影响
+    validations:
+      required: true
+  - type: textarea
+    id: ai_attempts
+    attributes:
+      label: AI Attempts
+      description: 记录 AI 做过哪些尝试、失败在哪里、是否需要人工介入
+    validations:
+      required: true
+  - type: textarea
+    id: observability
+    attributes:
+      label: Time / Token / Log Links
+      description: 链接对应 AI delivery log，并记录耗时、token 和相关证据
+      placeholder: "AI log: ...\nTime impact: ...\nToken impact: ..."
+    validations:
+      required: true

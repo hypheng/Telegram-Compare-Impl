@@ -1,0 +1,8 @@
+interface:
+  display_name: "TG Product Design"
+  short_description: "Framework-agnostic Telegram product design"
+  default_prompt: "Use $telegram-compare-product-design to define or refine framework-agnostic product artifacts for this Telegram comparison project."
+
+policy:
+  allow_implicit_invocation: true
+

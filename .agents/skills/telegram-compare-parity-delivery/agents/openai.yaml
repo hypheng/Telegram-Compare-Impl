@@ -1,0 +1,8 @@
+interface:
+  display_name: "TG Parity Delivery"
+  short_description: "Keep KMP and CJMP slices in parity"
+  default_prompt: "Use $telegram-compare-parity-delivery to plan, implement, or review the same Telegram feature slice across KMP and CJMP."
+
+policy:
+  allow_implicit_invocation: true
+

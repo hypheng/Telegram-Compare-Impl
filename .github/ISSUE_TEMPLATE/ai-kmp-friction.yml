@@ -1,0 +1,62 @@
+name: AI KMP Friction
+description: 记录只影响 KMP 路线的 AI 执行阻塞或能力缺口
+title: "[AI/KMP] "
+labels:
+  - ai/kmp
+body:
+  - type: input
+    id: slice_id
+    attributes:
+      label: Slice ID
+      placeholder: S3
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Android
+        - iOS
+        - Shared
+    validations:
+      required: true
+  - type: dropdown
+    id: issue_type
+    attributes:
+      label: Issue Type
+      options:
+        - type/spec
+        - type/ui
+        - type/debug
+        - type/tooling
+        - type/docs
+        - type/test
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction / Trigger
+    validations:
+      required: true
+  - type: textarea
+    id: expected_actual
+    attributes:
+      label: Expected vs Actual
+    validations:
+      required: true
+  - type: textarea
+    id: ai_attempts
+    attributes:
+      label: AI Attempts
+      description: 记录 AI 尝试次数、失败模式和人工介入
+    validations:
+      required: true
+  - type: textarea
+    id: observability
+    attributes:
+      label: Time / Token / Log Links
+      placeholder: "AI log: ...\nTime impact: ...\nToken impact: ..."
+    validations:
+      required: true

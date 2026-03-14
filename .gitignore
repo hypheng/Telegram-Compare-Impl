@@ -1,0 +1,13 @@
+.DS_Store
+.idea/
+.vscode/
+.cache/
+build/
+dist/
+out/
+.gradle/
+.konan/
+node_modules/
+*.log
+*.iml
+

@@ -1,0 +1,8 @@
+interface:
+  display_name: "TG KMP Delivery"
+  short_description: "Android-first KMP delivery for Telegram"
+  default_prompt: "Use $telegram-compare-kmp-delivery to plan or implement the KMP side of this Telegram comparison project."
+
+policy:
+  allow_implicit_invocation: true
+

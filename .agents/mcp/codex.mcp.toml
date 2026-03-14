@@ -1,0 +1,11 @@
+# Merge selected entries into ~/.codex/config.toml
+# or use .agents/setup/bootstrap-codex-mcp.sh --apply
+
+[mcp_servers.openaiDeveloperDocs]
+url = "https://developers.openai.com/mcp"
+
+[mcp_servers.context7]
+url = "https://mcp.context7.com/mcp"
+# Optional if you have a higher-rate-limit key:
+# http_headers = { "CONTEXT7_API_KEY" = "YOUR_API_KEY" }
+

@@ -1,0 +1,15 @@
+interface:
+  display_name: "TG CJMP Delivery"
+  short_description: "Android-first CJMP delivery for Telegram"
+  default_prompt: "Use $telegram-compare-cjmp-delivery to plan or implement the CJMP side of this Telegram comparison project."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "context7"
+      description: "CJMP docs entrypoint via /hypheng/cjmp-ai-docs"
+      transport: "streamable_http"
+      url: "https://mcp.context7.com/mcp"
+
+policy:
+  allow_implicit_invocation: true

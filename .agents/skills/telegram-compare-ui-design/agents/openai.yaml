@@ -1,0 +1,8 @@
+interface:
+  display_name: "TG UI Design"
+  short_description: "Mobile UI and interaction design workflow"
+  default_prompt: "Use $telegram-compare-ui-design to design or refine a mobile UI slice for this Telegram comparison project before implementation."
+
+policy:
+  allow_implicit_invocation: true
+

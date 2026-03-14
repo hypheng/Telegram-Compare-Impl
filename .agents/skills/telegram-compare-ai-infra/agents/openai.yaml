@@ -1,0 +1,20 @@
+interface:
+  display_name: "TG AI Infra"
+  short_description: "Operate AI workflow, MCP, and setup"
+  default_prompt: "Use $telegram-compare-ai-infra to set up or maintain the AI engineering layer for this Telegram comparison project."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "openaiDeveloperDocs"
+      description: "Latest official OpenAI developer documentation"
+      transport: "streamable_http"
+      url: "https://developers.openai.com/mcp"
+    - type: "mcp"
+      value: "context7"
+      description: "Up-to-date library and framework docs"
+      transport: "streamable_http"
+      url: "https://mcp.context7.com/mcp"
+
+policy:
+  allow_implicit_invocation: true
