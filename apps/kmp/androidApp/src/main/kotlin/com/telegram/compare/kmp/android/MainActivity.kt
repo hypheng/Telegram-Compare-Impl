@@ -13,13 +13,14 @@ class MainActivity : Activity() {
 
         val repository = InMemoryChatRepository()
         val summary = BuildBootstrapSummaryUseCase(repository).execute(chatId = "chat-1")
+        val moduleOrder = summary.moduleOrder.joinToString(separator = " -> ")
         val lines = buildList {
             add("Telegram Compare KMP")
             add("")
             add("First slice: ${summary.firstSlice}")
             add("Sample chats: ${summary.chatCount}")
             add("Sample messages: ${summary.messageCount}")
-            add("Module order: ${summary.moduleOrder.joinToString(\" -> \")}")
+            add("Module order: $moduleOrder")
             add("")
             add("Next steps:")
             summary.nextSteps.forEachIndexed { index, step ->

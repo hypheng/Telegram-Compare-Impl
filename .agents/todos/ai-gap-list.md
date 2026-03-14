@@ -30,7 +30,7 @@
 - GitHub labels 还没在远端仓库里实际创建；issue templates 只能提供约定，不能替代仓库配置
 - AI token 用量还没有自动采集通路；当前需要手工回填或从宿主工具的 usage 信息摘录
 - 刚补齐的 acceptance report / AI delivery log / issue taxonomy 还没经过首个真实切片验证
-- KMP `./gradlew doctor` 已通过，但更重的依赖解析仍可能受到本机残留 SOCKS 代理配置影响；当前建议优先使用 `./scripts/kmp-gradle-no-proxy.sh`
+- KMP bootstrap 基线（`./gradlew doctor`、共享层测试、`androidApp:assembleDebug`、`androidApp:assembleRelease`）已验证通过，但这套基础设施还没经过首个真实业务切片验证
 
 ### Agent 侧缺口
 

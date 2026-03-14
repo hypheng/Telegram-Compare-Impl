@@ -50,7 +50,6 @@ declare -a paths=(
   ".agents/skills/telegram-compare-cjmp-delivery/SKILL.md"
   "docs/decisions/0002-kmp-android-first-topology.md"
   "scripts/check-kmp-project.sh"
-  "scripts/kmp-gradle-no-proxy.sh"
   "scripts/kmp-doctor.sh"
   ".github/ISSUE_TEMPLATE/config.yml"
   ".github/ISSUE_TEMPLATE/ai-common-friction.yml"
