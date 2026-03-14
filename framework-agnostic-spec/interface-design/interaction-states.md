@@ -20,12 +20,14 @@
 ## 手势与反馈
 
 - Chat list row: tap 进入，swipe 作为次级操作预留
+- Chat list search: 默认固定在标题区下方，优先做 Telegram 类似的顺滑进入与聚焦反馈
 - Message composer: send 后立即清空输入，但保留失败恢复能力
+- Top actions: 顶部编辑、写消息、添加等入口优先使用轻量按压反馈，不做重按钮态
 - Back navigation: 遵循平台默认手势，不自造交互
+- Bottom tabs: 当前 tab 高亮切换要平滑，但不能做过重的缩放和弹跳
 
 ## Accessibility
 
 - 触控目标不小于平台建议最小尺寸
 - 动效需要兼容 reduced motion
 - 错误提示不能只靠颜色表达
-
