@@ -14,17 +14,16 @@
 
 ## 当前策略
 
-先保留与 `framework-agnostic-spec/` 同步的实现入口和技术决策说明，并把 `/hypheng/cjmp-ai-docs` 作为 CJMP 首选开发文档源。
+遵循官方 `app-dev -> quick-start -> keels` 路径先建应用壳，把当前切片逻辑直接收在 `telegram_compare_app` 内。`cjpm` 在这里主要作为 app `lib/` 的包配置与构建依赖描述，而不是单独模块层。
 
-## 建议结构
+## 当前结构
 
 ```text
 apps/cjmp/
 ├── README.md
-├── app-shell/       # 各平台壳层
-├── business/        # 业务模块
-├── platform/        # Android / iOS / HarmonyOS 适配
-└── build/           # CJMP / keels 相关构建配置
+├── docs/
+│   └── s1-login-session-restore-plan.md
+└── telegram_compare_app/     # keels create --app 生成的 app shell
 ```
 
 ## 当前状态
@@ -32,12 +31,15 @@ apps/cjmp/
 - 本机已具备 `cjc`、`cjpm`、`keels`
 - `cjfmt`、`cjlint`、`cjdb` 也纳入了环境检查
 - CJMP 文档入口已切到 Context7 `/hypheng/cjmp-ai-docs`
-- 仓库级最小可运行工程仍未初始化，因此当前还是“有工具链、没项目模板”的状态
-- `S1` 已有 repo-local 切片计划: `apps/cjmp/docs/s1-login-session-restore-plan.md`
+- `apps/cjmp/telegram_compare_app` 已通过 `keels create --app` 初始化
+- `apps/cjmp/telegram_compare_app/lib/session.cj` 已内联 `SessionRepository` 与本地 snapshot 逻辑
+- `keels build apk --platform android-arm64 --debug` 和 `keels run --debug -d emulator-5554` 已在新 worktree 中打通
+- Android 模拟器上已完成 `S1` 的登录成功、冷启动恢复、失效会话回退、登出和登出后冷启动证据，当前 `S1` 可在 CJMP 侧标为 `accepted`
+- `CJMP` 页面为自渲染，`uiautomator dump` 仅暴露单个根 `android.view.View`；当前已按等价证据口径保存截图和 root-only XML
 
-## 下一步
+## 当前工作方式
 
-1. 按 `apps/cjmp/docs/s1-login-session-restore-plan.md` 初始化 `S1` 的最小 `cjpm` 工程
-2. 先让 `cjpm init` / `cjpm build -V` / `cjpm run` 在 repo 内打通
-3. 确认 Android-first 的平台壳承载方式，再决定是否引入 `keels`
-4. 在 `S1` 三态打通后，再推进 `S2/S3`
+1. 先跑 `bash ./.agents/setup/check-cjmp-env.sh`
+2. app 壳使用 `keels create/build/run`
+3. 当前切片逻辑直接维护在 `telegram_compare_app/lib/`
+4. 参考 `apps/cjmp/docs/s1-login-session-restore-plan.md` 的同一流程继续推进下一个切片，并保留 self-render 证据口径
