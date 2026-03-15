@@ -110,3 +110,14 @@
 
 - 顶部导航、消息气泡、输入框都应延续 Telegram 的朴素和高密度风格
 - 输入区优先使用圆角 composer，不做夸张阴影或厚重工具栏
+- 顶部导航优先采用 `back + avatar + title/status` 结构，标题左对齐，不在主导航中展示切片或 debug 徽标
+- 键盘弹出时页面必须 `resize`，保持顶部导航与 composer 可见
+- outgoing / incoming 气泡的时间与发送状态要贴近气泡右下角，避免单独拉出厚 meta 行
+- debug-only 能力应降噪为次级入口，不能成为聊天详情主视觉的一部分
+
+### Media Attachment
+
+- 图片消息优先表现为真实缩略图容器，而不是彩色信息卡片
+- 图片底部可带弱化 caption 和时间，但不在缩略图中放置夸张标签
+- media picker 使用 Telegram 风格的底部 sheet 和缩略图网格，不把选择器做成 settings 风格列表卡片
+- composer 中的媒体入口优先是附件图标按钮，而不是高存在感文本按钮

@@ -56,4 +56,24 @@ class DemoSessionRepositoryTest {
         )
         assertEquals(SessionRestoreResult.NoSession, secondRestore)
     }
+
+    @Test
+    fun rejectsDemoLoginWhenDemoAuthIsDisabled() {
+        val storage = InMemorySessionStorage()
+        val repository = DemoSessionRepository(
+            storage = storage,
+            demoAuthEnabled = false,
+        )
+
+        val loginResult = repository.login(
+            phoneNumber = "+8613800000000",
+            verificationCode = DemoSessionRepository.DEMO_VERIFICATION_CODE,
+        )
+
+        assertEquals(
+            LoginResult.Failed("当前构建未启用 demo 登录。"),
+            loginResult,
+        )
+        assertEquals(null, storage.read())
+    }
 }

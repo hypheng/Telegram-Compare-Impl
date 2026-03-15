@@ -8,8 +8,15 @@ import com.telegram.compare.kmp.shareddomain.ChatListRepository
 import com.telegram.compare.kmp.shareddomain.ChatSummary
 import com.telegram.compare.kmp.shareddomain.ChatThread
 import com.telegram.compare.kmp.shareddomain.DeliveryState
+import com.telegram.compare.kmp.shareddomain.MediaAttachment
+import com.telegram.compare.kmp.shareddomain.MediaPickerLoadResult
 import com.telegram.compare.kmp.shareddomain.Message
+import com.telegram.compare.kmp.shareddomain.MessageSearchHit
 import com.telegram.compare.kmp.shareddomain.RetryMessageResult
+import com.telegram.compare.kmp.shareddomain.SearchLoadResult
+import com.telegram.compare.kmp.shareddomain.SearchQuery
+import com.telegram.compare.kmp.shareddomain.SearchRepository
+import com.telegram.compare.kmp.shareddomain.SendMediaResult
 import com.telegram.compare.kmp.shareddomain.SendMessageResult
 import com.telegram.compare.kmp.shareddomain.SyncRepository
 import com.telegram.compare.kmp.shareddomain.SyncSnapshot
@@ -24,9 +31,98 @@ enum class ChatListScenario {
     ERROR,
 }
 
-class InMemoryChatRepository(
-    private val snapshotStorage: SyncSnapshotStorage = InMemorySyncSnapshotStorage(),
-) : ChatDetailRepository, ChatListRepository, SyncRepository {
+class InMemoryChatFixtureBundle(
+    snapshotStorage: SyncSnapshotStorage = InMemorySyncSnapshotStorage(),
+) {
+    private val store = InMemoryChatStore(snapshotStorage)
+
+    val chatListRepository: ChatListRepository = InMemoryChatListRepository(store)
+    val chatDetailRepository: ChatDetailRepository = InMemoryChatDetailRepository(store)
+    val searchRepository: SearchRepository = InMemorySearchRepository(store)
+    val syncRepository: SyncRepository = InMemorySyncRepository(store)
+    val debugController = InMemoryChatDebugController(store)
+}
+
+class InMemoryChatDebugController internal constructor(
+    private val store: InMemoryChatStore,
+) {
+    fun setChatListScenario(next: ChatListScenario) {
+        store.setChatListScenario(next)
+    }
+
+    fun currentChatListScenario(): ChatListScenario = store.currentChatListScenario()
+
+    fun restoreDefaultFixtures() {
+        store.restoreDefaultFixtures()
+    }
+
+    fun setNextSendShouldFail(enabled: Boolean) {
+        store.setNextSendShouldFail(enabled)
+    }
+
+    fun nextSendWillFail(): Boolean = store.nextSendWillFail()
+}
+
+private class InMemoryChatListRepository(
+    private val store: InMemoryChatStore,
+) : ChatListRepository {
+    override fun loadChatList(query: ChatListQuery): ChatListLoadResult = store.loadChatList(query)
+
+    override fun refreshChatList(query: ChatListQuery): ChatListLoadResult = store.refreshChatList(query)
+}
+
+private class InMemoryChatDetailRepository(
+    private val store: InMemoryChatStore,
+) : ChatDetailRepository {
+    override fun loadChatDetail(chatId: String): ChatDetailLoadResult = store.loadChatDetail(chatId)
+
+    override fun sendMessage(
+        chatId: String,
+        text: String,
+    ): SendMessageResult = store.sendMessage(chatId, text)
+
+    override fun retryMessage(
+        chatId: String,
+        messageId: String,
+    ): RetryMessageResult = store.retryMessage(chatId, messageId)
+
+    override fun loadAvailableMedia(): MediaPickerLoadResult = store.loadAvailableMedia()
+
+    override fun sendMedia(
+        chatId: String,
+        mediaId: String,
+    ): SendMediaResult = store.sendMedia(chatId, mediaId)
+}
+
+private class InMemorySearchRepository(
+    private val store: InMemoryChatStore,
+) : SearchRepository {
+    override fun search(query: SearchQuery): SearchLoadResult = store.search(query)
+}
+
+private class InMemorySyncRepository(
+    private val store: InMemoryChatStore,
+) : SyncRepository {
+    override fun restoreSnapshot(): SyncSnapshotRestoreResult = store.restoreSnapshot()
+
+    override fun saveSnapshot(request: SyncSnapshotRequest): SyncSnapshotSaveResult = store.saveSnapshot(request)
+
+    override fun clearSnapshot() {
+        store.clearSnapshot()
+    }
+}
+
+/**
+ * Demo-only in-memory fixture store used by the current KMP shell.
+ *
+ * Single-thread contract:
+ * - The current Android shell mutates this store only from the main thread.
+ * - It is not safe for concurrent access from multiple threads without an explicit synchronization strategy.
+ */
+internal class InMemoryChatStore(
+    private val snapshotStorage: SyncSnapshotStorage,
+) {
+    private val availableMedia = buildAvailableMedia()
     private val chats = buildDefaultChats().toMutableList()
     private var chatListScenario: ChatListScenario = ChatListScenario.DEFAULT
     private var refreshCount = 0
@@ -37,7 +133,7 @@ class InMemoryChatRepository(
         .mapValues { (_, messages) -> messages.toMutableList() }
         .toMutableMap()
 
-    override fun loadChatList(query: ChatListQuery): ChatListLoadResult {
+    fun loadChatList(query: ChatListQuery): ChatListLoadResult {
         return when (chatListScenario) {
             ChatListScenario.ERROR -> ChatListLoadResult.Failed("会话列表加载失败，请下拉重试。")
             ChatListScenario.EMPTY -> ChatListLoadResult.Empty
@@ -47,7 +143,7 @@ class InMemoryChatRepository(
         }
     }
 
-    override fun refreshChatList(query: ChatListQuery): ChatListLoadResult {
+    fun refreshChatList(query: ChatListQuery): ChatListLoadResult {
         return when (chatListScenario) {
             ChatListScenario.ERROR -> ChatListLoadResult.Failed("刷新失败，请稍后再试。")
             ChatListScenario.EMPTY -> ChatListLoadResult.Empty
@@ -66,12 +162,49 @@ class InMemoryChatRepository(
         }
     }
 
-    override fun loadChatDetail(chatId: String): ChatDetailLoadResult {
+    fun loadChatDetail(chatId: String): ChatDetailLoadResult {
         return resolveThread(chatId)?.let { ChatDetailLoadResult.Success(it) }
             ?: ChatDetailLoadResult.Failed("未找到该会话。")
     }
 
-    override fun sendMessage(
+    fun search(query: SearchQuery): SearchLoadResult {
+        return when (chatListScenario) {
+            ChatListScenario.ERROR -> SearchLoadResult.Failed("搜索暂不可用，请稍后重试。")
+            ChatListScenario.EMPTY -> SearchLoadResult.Empty
+            ChatListScenario.DEFAULT -> {
+                val normalized = query.keyword.trim()
+                if (normalized.isBlank()) {
+                    SearchLoadResult.Empty
+                } else {
+                    val chatResults = filterChats(keyword = normalized)
+                    val messageResults = chats.flatMap { chat ->
+                        messagesByChat[chat.id]
+                            .orEmpty()
+                            .asReversed()
+                            .filter { message ->
+                                message.text.contains(normalized, ignoreCase = true)
+                            }.map { message ->
+                                MessageSearchHit(
+                                    chat = chat,
+                                    message = message,
+                                )
+                            }
+                    }
+
+                    if (chatResults.isEmpty() && messageResults.isEmpty()) {
+                        SearchLoadResult.Empty
+                    } else {
+                        SearchLoadResult.Success(
+                            chatResults = chatResults,
+                            messageResults = messageResults,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun sendMessage(
         chatId: String,
         text: String,
     ): SendMessageResult {
@@ -92,7 +225,7 @@ class InMemoryChatRepository(
 
         updateChatSummary(
             chatId = chatId,
-            lastMessagePreview = text,
+            lastMessagePreview = previewFor(nextMessage),
             lastMessageAtLabel = "刚刚",
             unreadCount = 0,
         )
@@ -114,7 +247,48 @@ class InMemoryChatRepository(
         }
     }
 
-    override fun retryMessage(
+    fun loadAvailableMedia(): MediaPickerLoadResult {
+        return MediaPickerLoadResult.Success(availableMedia)
+    }
+
+    fun sendMedia(
+        chatId: String,
+        mediaId: String,
+    ): SendMediaResult {
+        if (resolveThread(chatId) == null) {
+            return SendMediaResult.Failed("未找到目标会话。")
+        }
+
+        val attachment = availableMedia.firstOrNull { it.id == mediaId }
+            ?: return SendMediaResult.Failed("未找到可发送的图片。")
+
+        val nextMessage = Message(
+            id = nextMessageId(),
+            chatId = chatId,
+            text = attachment.defaultCaption,
+            sentAtLabel = "刚刚",
+            isOutgoing = true,
+            deliveryState = DeliveryState.SENT,
+            mediaAttachment = attachment,
+        )
+        val bucket = messagesByChat.getOrPut(chatId) { mutableListOf() }
+        bucket += nextMessage
+
+        updateChatSummary(
+            chatId = chatId,
+            lastMessagePreview = previewFor(nextMessage),
+            lastMessageAtLabel = "刚刚",
+            unreadCount = 0,
+        )
+        moveChatToTop(chatId)
+
+        return SendMediaResult.Success(
+            thread = requireNotNull(resolveThread(chatId)),
+            sentMessage = nextMessage,
+        )
+    }
+
+    fun retryMessage(
         chatId: String,
         messageId: String,
     ): RetryMessageResult {
@@ -144,7 +318,7 @@ class InMemoryChatRepository(
 
         updateChatSummary(
             chatId = chatId,
-            lastMessagePreview = retriedMessage.text,
+            lastMessagePreview = previewFor(retriedMessage),
             lastMessageAtLabel = "刚刚",
             unreadCount = 0,
         )
@@ -156,7 +330,7 @@ class InMemoryChatRepository(
         )
     }
 
-    override fun restoreSnapshot(): SyncSnapshotRestoreResult {
+    fun restoreSnapshot(): SyncSnapshotRestoreResult {
         val snapshot = snapshotStorage.read() ?: return SyncSnapshotRestoreResult.NoSnapshot
 
         return runCatching {
@@ -169,7 +343,7 @@ class InMemoryChatRepository(
         }
     }
 
-    override fun saveSnapshot(request: SyncSnapshotRequest): SyncSnapshotSaveResult {
+    fun saveSnapshot(request: SyncSnapshotRequest): SyncSnapshotSaveResult {
         val normalizedChatId = request.selectedChatId?.trim()?.ifBlank { null }
         if (request.route == SyncSnapshotRoute.CHAT_DETAIL && normalizedChatId == null) {
             return SyncSnapshotSaveResult.Failed("未找到需要缓存的聊天详情。")
@@ -189,7 +363,7 @@ class InMemoryChatRepository(
         return SyncSnapshotSaveResult.Success(snapshot)
     }
 
-    override fun clearSnapshot() {
+    fun clearSnapshot() {
         snapshotStorage.clear()
     }
 
@@ -313,6 +487,16 @@ class InMemoryChatRepository(
         return "message-$messageCounter"
     }
 
+    private fun previewFor(message: Message): String {
+        val attachment = message.mediaAttachment
+        return if (attachment == null) {
+            message.text
+        } else {
+            val caption = message.text.ifBlank { attachment.title }
+            "Photo · $caption"
+        }
+    }
+
     private companion object {
         const val DEFAULT_MESSAGE_COUNTER = 24
     }
@@ -323,13 +507,11 @@ private fun buildDefaultChats(): List<ChatSummary> {
         ChatSummary(
             id = "chat-1",
             title = "Telegram Compare",
-            lastMessagePreview = "Refine the KMP shell before CJMP parity.",
+            lastMessagePreview = "Photo · Telegram-style settings reference",
             unreadCount = 3,
             lastMessageAtLabel = "09:24",
             avatarLabel = "TC",
             statusLabel = "last seen recently",
-            avatarBackgroundColorHex = "#DDF0FF",
-            avatarTextColorHex = "#0E5D91",
         ),
         ChatSummary(
             id = "chat-2",
@@ -340,8 +522,6 @@ private fun buildDefaultChats(): List<ChatSummary> {
             avatarLabel = "AI",
             isMuted = true,
             statusLabel = "syncing logs",
-            avatarBackgroundColorHex = "#E8EAFD",
-            avatarTextColorHex = "#4E5ABD",
         ),
         ChatSummary(
             id = "chat-3",
@@ -351,8 +531,6 @@ private fun buildDefaultChats(): List<ChatSummary> {
             lastMessageAtLabel = "昨天",
             avatarLabel = "PD",
             statusLabel = "reviewing handoff",
-            avatarBackgroundColorHex = "#FFEBCD",
-            avatarTextColorHex = "#A15E12",
         ),
         ChatSummary(
             id = "chat-4",
@@ -362,19 +540,15 @@ private fun buildDefaultChats(): List<ChatSummary> {
             lastMessageAtLabel = "周四",
             avatarLabel = "KD",
             statusLabel = "typing...",
-            avatarBackgroundColorHex = "#E5F7EC",
-            avatarTextColorHex = "#1D7A47",
         ),
         ChatSummary(
             id = "chat-5",
             title = "QA Evidence",
-            lastMessagePreview = "Need another screenshot after the scroll-boundary fix.",
+            lastMessagePreview = "Photo · Fresh emulator screenshot for the search flow.",
             unreadCount = 2,
             lastMessageAtLabel = "周三",
             avatarLabel = "QA",
             statusLabel = "online",
-            avatarBackgroundColorHex = "#FFE4EC",
-            avatarTextColorHex = "#A03B63",
         ),
         ChatSummary(
             id = "chat-6",
@@ -384,8 +558,6 @@ private fun buildDefaultChats(): List<ChatSummary> {
             lastMessageAtLabel = "周二",
             avatarLabel = "GO",
             statusLabel = "last seen 2h ago",
-            avatarBackgroundColorHex = "#EAF7FF",
-            avatarTextColorHex = "#2B6B98",
         ),
         ChatSummary(
             id = "chat-7",
@@ -395,8 +567,6 @@ private fun buildDefaultChats(): List<ChatSummary> {
             lastMessageAtLabel = "周一",
             avatarLabel = "DS",
             statusLabel = "reviewing",
-            avatarBackgroundColorHex = "#F0E8FF",
-            avatarTextColorHex = "#6541A8",
         ),
         ChatSummary(
             id = "chat-8",
@@ -406,8 +576,6 @@ private fun buildDefaultChats(): List<ChatSummary> {
             lastMessageAtLabel = "3月12日",
             avatarLabel = "RN",
             statusLabel = "drafting summary",
-            avatarBackgroundColorHex = "#FDEDDC",
-            avatarTextColorHex = "#9E6316",
         ),
         ChatSummary(
             id = "chat-9",
@@ -417,8 +585,6 @@ private fun buildDefaultChats(): List<ChatSummary> {
             lastMessageAtLabel = "3月10日",
             avatarLabel = "BS",
             statusLabel = "awaiting input",
-            avatarBackgroundColorHex = "#E7F8F0",
-            avatarTextColorHex = "#25704A",
         ),
         ChatSummary(
             id = "chat-10",
@@ -428,13 +594,32 @@ private fun buildDefaultChats(): List<ChatSummary> {
             lastMessageAtLabel = "3月08日",
             avatarLabel = "MD",
             statusLabel = "fixture owner",
-            avatarBackgroundColorHex = "#ECEFF3",
-            avatarTextColorHex = "#5D6875",
+        ),
+    )
+}
+
+private fun buildAvailableMedia(): List<MediaAttachment> {
+    return listOf(
+        MediaAttachment(
+            id = "media-1",
+            title = "Settings reference",
+            defaultCaption = "Telegram-style settings reference",
+        ),
+        MediaAttachment(
+            id = "media-2",
+            title = "Search evidence",
+            defaultCaption = "Fresh emulator screenshot for the search flow.",
+        ),
+        MediaAttachment(
+            id = "media-3",
+            title = "Delivery board",
+            defaultCaption = "Media picker board for the S7 acceptance path.",
         ),
     )
 }
 
 private fun buildDefaultMessages(): Map<String, List<Message>> {
+    val media = buildAvailableMedia()
     return mapOf(
         "chat-1" to listOf(
             Message("message-1", "chat-1", "Spec is ready. Build the KMP shell next.", "09:02", false, DeliveryState.SENT),
@@ -448,7 +633,15 @@ private fun buildDefaultMessages(): Map<String, List<Message>> {
             Message("message-9", "chat-1", "Composer must stay pinned while the thread keeps scrolling.", "09:20", false, DeliveryState.SENT),
             Message("message-10", "chat-1", "That will also make send and retry states much easier to read.", "09:22", true, DeliveryState.SENT),
             Message("message-11", "chat-1", "Remember to log AI friction and blockers.", "09:23", false, DeliveryState.SENT),
-            Message("message-12", "chat-1", "Refine the KMP shell before CJMP parity.", "09:24", true, DeliveryState.SENT),
+            Message(
+                id = "message-12",
+                chatId = "chat-1",
+                text = media[0].defaultCaption,
+                sentAtLabel = "09:24",
+                isOutgoing = true,
+                deliveryState = DeliveryState.SENT,
+                mediaAttachment = media[0],
+            ),
         ),
         "chat-2" to listOf(
             Message("message-13", "chat-2", "Issue labels should distinguish common and KMP-specific friction.", "08:01", false, DeliveryState.SENT),
@@ -466,7 +659,15 @@ private fun buildDefaultMessages(): Map<String, List<Message>> {
             Message("message-21", "chat-4", "Do not let debug controls dominate the viewport.", "周四", false, DeliveryState.SENT),
         ),
         "chat-5" to listOf(
-            Message("message-22", "chat-5", "Capture another screenshot once the fixed footer is in place.", "周三", false, DeliveryState.SENT),
+            Message(
+                id = "message-22",
+                chatId = "chat-5",
+                text = media[1].defaultCaption,
+                sentAtLabel = "周三",
+                isOutgoing = false,
+                deliveryState = DeliveryState.SENT,
+                mediaAttachment = media[1],
+            ),
             Message("message-23", "chat-5", "Will do after the layout rebuild passes assembleDebug.", "周三", true, DeliveryState.SENT),
         ),
         "chat-10" to listOf(

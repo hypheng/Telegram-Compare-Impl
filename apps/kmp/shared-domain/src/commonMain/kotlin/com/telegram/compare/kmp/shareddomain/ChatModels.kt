@@ -9,8 +9,6 @@ data class ChatSummary(
     val avatarLabel: String,
     val isMuted: Boolean = false,
     val statusLabel: String = "",
-    val avatarBackgroundColorHex: String = "#EAF3FB",
-    val avatarTextColorHex: String = "#1F5F8B",
 )
 
 data class ChatListQuery(
@@ -32,6 +30,7 @@ data class Message(
     val sentAtLabel: String,
     val isOutgoing: Boolean,
     val deliveryState: DeliveryState,
+    val mediaAttachment: MediaAttachment? = null,
 )
 
 data class ChatThread(
@@ -72,6 +71,30 @@ sealed interface RetryMessageResult {
     ) : RetryMessageResult
 }
 
+data class MediaAttachment(
+    val id: String,
+    val title: String,
+    val defaultCaption: String,
+)
+
+sealed interface MediaPickerLoadResult {
+    data class Success(val attachments: List<MediaAttachment>) : MediaPickerLoadResult
+
+    data class Failed(val message: String) : MediaPickerLoadResult
+}
+
+sealed interface SendMediaResult {
+    data class Success(
+        val thread: ChatThread,
+        val sentMessage: Message,
+    ) : SendMediaResult
+
+    data class Failed(
+        val message: String,
+        val thread: ChatThread? = null,
+    ) : SendMediaResult
+}
+
 enum class DeliveryState {
     DRAFT,
     SENDING,
@@ -91,4 +114,8 @@ interface ChatDetailRepository {
     fun sendMessage(chatId: String, text: String): SendMessageResult
 
     fun retryMessage(chatId: String, messageId: String): RetryMessageResult
+
+    fun loadAvailableMedia(): MediaPickerLoadResult
+
+    fun sendMedia(chatId: String, mediaId: String): SendMediaResult
 }

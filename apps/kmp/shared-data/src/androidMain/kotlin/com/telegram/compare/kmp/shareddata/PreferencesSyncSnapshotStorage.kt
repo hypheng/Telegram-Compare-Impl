@@ -1,9 +1,11 @@
 package com.telegram.compare.kmp.shareddata
 
 import android.content.SharedPreferences
+import android.util.Log
 import com.telegram.compare.kmp.shareddomain.ChatSummary
 import com.telegram.compare.kmp.shareddomain.ChatThread
 import com.telegram.compare.kmp.shareddomain.DeliveryState
+import com.telegram.compare.kmp.shareddomain.MediaAttachment
 import com.telegram.compare.kmp.shareddomain.Message
 import com.telegram.compare.kmp.shareddomain.SyncSnapshot
 import com.telegram.compare.kmp.shareddomain.SyncSnapshotRoute
@@ -15,7 +17,12 @@ class PreferencesSyncSnapshotStorage(
 ) : SyncSnapshotStorage {
     override fun read(): SyncSnapshot? {
         val raw = sharedPreferences.getString(KEY_SYNC_SNAPSHOT, null) ?: return null
-        return runCatching { raw.toSyncSnapshot() }.getOrNull()
+        return try {
+            raw.toSyncSnapshot()
+        } catch (error: Exception) {
+            Log.w(TAG, "Failed to deserialize sync snapshot, discarding cache", error)
+            null
+        }
     }
 
     override fun write(snapshot: SyncSnapshot) {
@@ -32,6 +39,7 @@ class PreferencesSyncSnapshotStorage(
 
     private companion object {
         const val KEY_SYNC_SNAPSHOT = "sync_snapshot"
+        const val TAG = "SyncSnapshotStorage"
     }
 }
 
@@ -47,12 +55,20 @@ private fun SyncSnapshot.toJson(): JSONObject {
 private fun String.toSyncSnapshot(): SyncSnapshot {
     val root = JSONObject(this)
     return SyncSnapshot(
-        route = SyncSnapshotRoute.valueOf(root.getString("route")),
+        route = root.optString("route", SyncSnapshotRoute.CHAT_LIST.name).toSyncSnapshotRoute(),
         searchKeyword = root.optString("searchKeyword", ""),
         selectedChatId = root.optString("selectedChatId", "").ifBlank { null },
-        chats = root.getJSONArray("chats").toChatSummaryList(),
-        threads = root.getJSONArray("threads").toChatThreadList(),
+        chats = root.optJSONArray("chats")?.toChatSummaryList().orEmpty(),
+        threads = root.optJSONArray("threads")?.toChatThreadList().orEmpty(),
     )
+}
+
+private fun String.toSyncSnapshotRoute(): SyncSnapshotRoute {
+    return SyncSnapshotRoute.entries.firstOrNull { it.name == this } ?: SyncSnapshotRoute.CHAT_LIST
+}
+
+private fun String.toDeliveryState(): DeliveryState {
+    return DeliveryState.entries.firstOrNull { it.name == this } ?: DeliveryState.SENT
 }
 
 private fun JSONArray.toChatSummaryList(): List<ChatSummary> {
@@ -73,23 +89,29 @@ private fun JSONArray.toChatThreadList(): List<ChatThread> {
 
 private fun JSONObject.toChatSummary(): ChatSummary {
     return ChatSummary(
-        id = getString("id"),
-        title = getString("title"),
-        lastMessagePreview = getString("lastMessagePreview"),
-        unreadCount = getInt("unreadCount"),
-        lastMessageAtLabel = getString("lastMessageAtLabel"),
-        avatarLabel = getString("avatarLabel"),
-        isMuted = getBoolean("isMuted"),
-        statusLabel = getString("statusLabel"),
-        avatarBackgroundColorHex = getString("avatarBackgroundColorHex"),
-        avatarTextColorHex = getString("avatarTextColorHex"),
+        id = optString("id", ""),
+        title = optString("title", ""),
+        lastMessagePreview = optString("lastMessagePreview", ""),
+        unreadCount = optInt("unreadCount", 0),
+        lastMessageAtLabel = optString("lastMessageAtLabel", ""),
+        avatarLabel = optString("avatarLabel", "TG"),
+        isMuted = optBoolean("isMuted", false),
+        statusLabel = optString("statusLabel", ""),
     )
 }
 
 private fun JSONObject.toChatThread(): ChatThread {
     return ChatThread(
-        chat = getJSONObject("chat").toChatSummary(),
-        messages = getJSONArray("messages").toMessageList(),
+        chat = optJSONObject("chat")?.toChatSummary()
+            ?: ChatSummary(
+                id = "",
+                title = "",
+                lastMessagePreview = "",
+                unreadCount = 0,
+                lastMessageAtLabel = "",
+                avatarLabel = "TG",
+            ),
+        messages = optJSONArray("messages")?.toMessageList().orEmpty(),
     )
 }
 
@@ -103,12 +125,13 @@ private fun JSONArray.toMessageList(): List<Message> {
 
 private fun JSONObject.toMessage(): Message {
     return Message(
-        id = getString("id"),
-        chatId = getString("chatId"),
-        text = getString("text"),
-        sentAtLabel = getString("sentAtLabel"),
-        isOutgoing = getBoolean("isOutgoing"),
-        deliveryState = DeliveryState.valueOf(getString("deliveryState")),
+        id = optString("id", ""),
+        chatId = optString("chatId", ""),
+        text = optString("text", ""),
+        sentAtLabel = optString("sentAtLabel", ""),
+        isOutgoing = optBoolean("isOutgoing", false),
+        deliveryState = optString("deliveryState", DeliveryState.SENT.name).toDeliveryState(),
+        mediaAttachment = optJSONObject("mediaAttachment")?.toMediaAttachment(),
     )
 }
 
@@ -122,8 +145,6 @@ private fun ChatSummary.toJson(): JSONObject {
         .put("avatarLabel", avatarLabel)
         .put("isMuted", isMuted)
         .put("statusLabel", statusLabel)
-        .put("avatarBackgroundColorHex", avatarBackgroundColorHex)
-        .put("avatarTextColorHex", avatarTextColorHex)
 }
 
 private fun ChatThread.toJson(): JSONObject {
@@ -140,4 +161,20 @@ private fun Message.toJson(): JSONObject {
         .put("sentAtLabel", sentAtLabel)
         .put("isOutgoing", isOutgoing)
         .put("deliveryState", deliveryState.name)
+        .put("mediaAttachment", mediaAttachment?.toJson())
+}
+
+private fun JSONObject.toMediaAttachment(): MediaAttachment {
+    return MediaAttachment(
+        id = optString("id", ""),
+        title = optString("title", ""),
+        defaultCaption = optString("defaultCaption", ""),
+    )
+}
+
+private fun MediaAttachment.toJson(): JSONObject {
+    return JSONObject()
+        .put("id", id)
+        .put("title", title)
+        .put("defaultCaption", defaultCaption)
 }
