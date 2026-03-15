@@ -68,3 +68,17 @@
 - 设计 handoff: `framework-agnostic-spec/interface-design/s1-login-session-restore.md`
 - 涉及屏幕: `UI-S1`、`UI-S2`，以及作为成功落点的 `UI-S3 Chat List Entry Shell`
 - 范围说明: `UI-S3` 在 `S1` 中只承担主壳到达验证，不计入 `S2` 完整验收
+
+### S2 会话列表
+
+- 设计 handoff: `framework-agnostic-spec/interface-design/s2-chat-list.md`
+- repo-side handoff: `framework-agnostic-assets/design-evidence/2026-03-15-S2-chat-list-repo-handoff-brief.md`
+- 涉及屏幕: `UI-S3`、`UI-S5`，以及作为承接提示的 `UI-S4 Chat Detail Entry Placeholder`
+- 范围说明: `UI-S4` 在本切片只承担“点进下一步”的占位说明，不计入 `S3` 验收
+
+### S3 单聊详情与文本发送
+
+- 设计 handoff: `framework-agnostic-spec/interface-design/s3-chat-detail-and-send.md`
+- repo-side handoff: `framework-agnostic-assets/design-evidence/2026-03-15-S3-chat-detail-repo-handoff-brief.md`
+- 涉及屏幕: `UI-S4`
+- 范围说明: 覆盖真实详情、发送中、失败和重试；媒体、附件和群聊仍不纳入本切片

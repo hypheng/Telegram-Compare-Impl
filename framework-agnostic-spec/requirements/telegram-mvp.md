@@ -27,6 +27,8 @@
 ## 已细化切片
 
 - `S1 登录与会话恢复`: 详见 `framework-agnostic-spec/requirements/s1-login-session-restore.md`
+- `S2 会话列表`: 详见 `framework-agnostic-spec/requirements/s2-chat-list.md`
+- `S3 单聊详情与文本发送`: 详见 `framework-agnostic-spec/requirements/s3-chat-detail-and-send.md`
 
 ## 非功能要求
 

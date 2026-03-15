@@ -9,11 +9,12 @@
 - `framework-agnostic-spec/interface-design/` 仍然是仓库内第一真相源。
 - Figma 现在被提升为显式交付阶段，用于视觉稿、prototype、ready-for-dev frame/node 和 MCP 上下文。
 
-当前活动切片仍是 `S1 登录与会话恢复`，但项目状态需要区分:
+当前项目状态已经进入:
 
-- `S1` 的 KMP 实现已经启动
-- `S1` 的 Figma handoff 仍需补回
-- `S2` 起默认必须先完成设计和 Figma handoff，再开始实现
+- `S1-S3` 的 KMP 主用户工作流已完成代码、构建和设备验收
+- `S1-S3` 的 Figma handoff 仍因缺少可编辑文件而未闭环
+- `S2-S3` 的 CJMP 仍按当前范围保持 deferred
+- 下一条候选切片是 `S4 本地缓存与离线恢复`
 
 ## 分阶段路线
 
@@ -30,9 +31,9 @@
 
 | Slice | 当前阶段 | Design 门槛 | Implementation 门槛 | 当前备注 |
 |---|---|---|---|---|
-| `S1` 登录与会话恢复 | `I1` 进行中，`D2` 待补回 | 已有 repo 内 UI 定义，仍需补 Figma handoff | KMP 已启动；CJMP 暂未开始 | 这是一个 backfill 特例，不应成为后续切片默认方式 |
-| `S2` 会话列表 | `D1` 待推进 | 必须先完成 Telegram 风格列表的 screen/state/wireframe | 需要先有 Figma handoff，再允许 KMP/CJMP 开始 | 这是第一个必须走完整设计链路的切片 |
-| `S3` 单聊详情与文本发送 | backlog | 需要先补 detail/composer/failed-send 设计 | 依赖 `S2` 主壳稳定 | 仍是首个核心对比切片 |
+| `S1` 登录与会话恢复 | `E1` 已完成，`D2` blocked，`I2` deferred | 已有 repo 内 UI 定义和 backfill brief，但缺真实 Figma file / frame links | KMP 已验收；CJMP 当前不作为闭环要求 | 这是一个 backfill 特例，不应成为后续切片默认方式 |
+| `S2` 会话列表 | `E1` 已完成，`D2` blocked，`I2` deferred | 已有 repo 内 UI 定义和 handoff brief，但缺真实 Figma file / frame links | KMP 已验收；CJMP 当前不作为闭环要求 | 设备侧已完成 default / search / refresh / empty / error 验收 |
+| `S3` 单聊详情与文本发送 | `E1` 已完成，`D2` blocked，`I2` deferred | 已有 repo 内 UI 定义和 handoff brief，但缺真实 Figma file / frame links | KMP 已验收；CJMP 当前不作为闭环要求 | KMP 主用户工作流现已从登录贯通到详情发送 |
 | `S4` 本地缓存与离线恢复 | backlog | 依赖前序切片 UI 和状态稳定 | 依赖 `S1-S3` 的领域与存储边界 | 更适合在主路径闭环后推进 |
 
 ## S1 当前执行清单
@@ -40,11 +41,11 @@
 | Layer | Deliverable | 退出条件 |
 |---|---|---|
 | framework-agnostic spec | S1 需求、UI 定义、roadmap、parity 更新 | 文档能直接指导实现，不再依赖口头解释 |
-| Figma handoff | S1 关键 frame、状态 frame、prototype、ready-for-dev 标注 | design evidence 中存在 frame/node links 和 handoff payload |
+| Figma handoff | S1 关键 frame、状态 frame、prototype、ready-for-dev 标注 | 当前 blocked: 仍缺可编辑 Figma 文件、frame/node links 和 handoff payload |
 | `shared-domain` | `UserSession`、`SessionRestoreResult`、`LoginResult`、use cases | 共享测试覆盖成功、无平台专有状态 |
 | `shared-data` | mock `SessionRepository`、会话持久化边界、测试桩 | 可验证 restore / login / logout / expired-session |
-| `androidApp` | 启动恢复页、登录页、主壳入口页 | 能演示 AC-S1-1 到 AC-S1-6 的主要路径 |
-| evaluation assets | acceptance report、AI log、parity matrix | 能追溯本轮 AI 操作和剩余风险 |
+| `androidApp` | 启动恢复页、登录页、主壳入口页 | 已完成 AC-S1-1 到 AC-S1-6 的模拟器验收 |
+| evaluation assets | acceptance report、AI log、parity matrix | 已有 acceptance evidence、AI log 和 parity 记录 |
 
 ## 执行原则
 

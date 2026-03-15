@@ -19,13 +19,27 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import com.telegram.compare.kmp.shareddomain.ChatDetailLoadResult
+import com.telegram.compare.kmp.shareddomain.ChatListLoadResult
 import com.telegram.compare.kmp.shareddomain.ChatSummary
+import com.telegram.compare.kmp.shareddomain.ChatThread
+import com.telegram.compare.kmp.shareddomain.DeliveryState
+import com.telegram.compare.kmp.shareddomain.LoadChatDetailUseCase
+import com.telegram.compare.kmp.shareddomain.LoadChatListUseCase
 import com.telegram.compare.kmp.shareddomain.LoginResult
 import com.telegram.compare.kmp.shareddomain.LoginWithCodeUseCase
 import com.telegram.compare.kmp.shareddomain.LogoutUseCase
+import com.telegram.compare.kmp.shareddomain.Message
+import com.telegram.compare.kmp.shareddomain.RefreshChatListUseCase
 import com.telegram.compare.kmp.shareddomain.RestoreSessionUseCase
+import com.telegram.compare.kmp.shareddomain.RetryChatMessageUseCase
+import com.telegram.compare.kmp.shareddomain.RetryMessageResult
+import com.telegram.compare.kmp.shareddomain.SendChatMessageUseCase
+import com.telegram.compare.kmp.shareddomain.SendMessageResult
 import com.telegram.compare.kmp.shareddomain.SessionRestoreResult
 import com.telegram.compare.kmp.shareddomain.UserSession
+import com.telegram.compare.kmp.shareddata.ChatListScenario
 import com.telegram.compare.kmp.shareddata.DemoSessionRepository
 import com.telegram.compare.kmp.shareddata.InMemoryChatRepository
 import com.telegram.compare.kmp.shareddata.PreferencesSessionStorage
@@ -41,6 +55,10 @@ class MainActivity : Activity() {
     private var phoneDraft = "+86 138 0000 0000"
     private var codeDraft = DemoSessionRepository.DEMO_VERIFICATION_CODE
     private var latestRestoreMessage: String? = null
+    private var currentSession: UserSession? = null
+    private var chatListStatusMessage: String? = null
+    private var searchDraft: String = ""
+    private var chatComposerDraft: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,6 +78,15 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+    override fun onBackPressed() {
+        if (screenState is MainScreenState.ChatDetail) {
+            returnToChatList()
+            return
+        }
+        super.onBackPressed()
+    }
+
     private fun startRestoreFlow() {
         handler.removeCallbacksAndMessages(null)
         render(MainScreenState.Restoring)
@@ -69,17 +96,22 @@ class MainActivity : Activity() {
                 when (val result = RestoreSessionUseCase(sessionRepository).execute()) {
                     is SessionRestoreResult.Restored -> {
                         latestRestoreMessage = null
-                        renderHome(
-                            session = result.session,
-                            statusMessage = "已恢复上次会话，主壳入口已就绪。",
-                        )
+                        currentSession = result.session
+                        searchDraft = ""
+                        chatComposerDraft = ""
+                        chatListStatusMessage = "已恢复上次会话，正在加载会话列表。"
+                        loadChatList(showLoading = true, isRefresh = false)
                     }
                     SessionRestoreResult.NoSession -> {
                         latestRestoreMessage = null
+                        currentSession = null
+                        chatListStatusMessage = null
                         render(MainScreenState.Login())
                     }
                     is SessionRestoreResult.Failed -> {
                         latestRestoreMessage = result.message
+                        currentSession = null
+                        chatListStatusMessage = null
                         render(
                             MainScreenState.Login(
                                 restoreMessage = result.message,
@@ -112,10 +144,11 @@ class MainActivity : Activity() {
                 ) {
                     is LoginResult.Success -> {
                         latestRestoreMessage = null
-                        renderHome(
-                            session = result.session,
-                            statusMessage = "登录成功，已进入 Chat List Entry Shell。",
-                        )
+                        currentSession = result.session
+                        searchDraft = ""
+                        chatComposerDraft = ""
+                        chatListStatusMessage = "登录成功，正在加载会话列表。"
+                        loadChatList(showLoading = true, isRefresh = false)
                     }
                     is LoginResult.InvalidInput -> {
                         render(
@@ -139,34 +172,355 @@ class MainActivity : Activity() {
         )
     }
 
+    private fun loadChatList(
+        showLoading: Boolean,
+        isRefresh: Boolean,
+    ) {
+        val session = currentSession ?: return
+        val currentState = screenState as? MainScreenState.ChatList
+
+        if (showLoading) {
+            render(
+                MainScreenState.ChatList(
+                    session = session,
+                    statusMessage = chatListStatusMessage,
+                    contentState = ChatListContentState.Loading,
+                    searchDraft = searchDraft,
+                ),
+            )
+        } else if (isRefresh && currentState != null) {
+            render(
+                currentState.copy(
+                    isRefreshing = true,
+                    statusMessage = chatListStatusMessage,
+                ),
+            )
+        }
+
+        handler.removeCallbacksAndMessages(null)
+        handler.postDelayed(
+            {
+                val result = if (isRefresh) {
+                    RefreshChatListUseCase(chatRepository).execute(searchDraft)
+                } else {
+                    LoadChatListUseCase(chatRepository).execute(searchDraft)
+                }
+
+                if (isRefresh) {
+                    chatListStatusMessage = when (result) {
+                        is ChatListLoadResult.Success -> "会话列表已刷新。"
+                        ChatListLoadResult.Empty -> "当前没有可显示的会话。"
+                        is ChatListLoadResult.Failed -> result.message
+                    }
+                }
+
+                renderChatListResult(result)
+            },
+            if (isRefresh) REFRESH_DELAY_MS else CHAT_LIST_DELAY_MS,
+        )
+    }
+
+    private fun renderChatListResult(result: ChatListLoadResult) {
+        val session = currentSession ?: return
+        val contentState = when (result) {
+            is ChatListLoadResult.Success -> ChatListContentState.Ready(result.chats)
+            ChatListLoadResult.Empty -> {
+                if (searchDraft.isBlank()) {
+                    ChatListContentState.Empty(
+                        title = "暂无会话",
+                        body = "当前 demo 数据为空。你可以恢复默认数据或稍后再试。",
+                    )
+                } else {
+                    ChatListContentState.Empty(
+                        title = "未找到匹配的会话",
+                        body = "试试搜索会话名或最近消息中的关键词。",
+                    )
+                }
+            }
+            is ChatListLoadResult.Failed -> ChatListContentState.Error(result.message)
+        }
+
+        render(
+            MainScreenState.ChatList(
+                session = session,
+                statusMessage = chatListStatusMessage,
+                contentState = contentState,
+                searchDraft = searchDraft,
+                isRefreshing = false,
+            ),
+        )
+    }
+
+    private fun submitSearch() {
+        val session = currentSession ?: return
+        chatListStatusMessage = if (searchDraft.isBlank()) {
+            "已恢复默认列表。"
+        } else {
+            "正在搜索 \"$searchDraft\"..."
+        }
+        render(
+            MainScreenState.ChatList(
+                session = session,
+                statusMessage = chatListStatusMessage,
+                contentState = ChatListContentState.Loading,
+                searchDraft = searchDraft,
+            ),
+        )
+        loadChatList(showLoading = false, isRefresh = false)
+    }
+
+    private fun clearSearch() {
+        searchDraft = ""
+        chatListStatusMessage = "已清除搜索条件。"
+        loadChatList(showLoading = true, isRefresh = false)
+    }
+
+    private fun refreshChats() {
+        loadChatList(showLoading = false, isRefresh = true)
+    }
+
+    private fun openChat(chat: ChatSummary) {
+        val session = currentSession ?: return
+        chatComposerDraft = ""
+        render(
+            MainScreenState.ChatDetail(
+                session = session,
+                chatId = chat.id,
+                chatTitle = chat.title,
+                statusMessage = "正在打开 ${chat.title}...",
+                contentState = ChatDetailContentState.Loading,
+                composerDraft = chatComposerDraft,
+                nextSendWillFail = chatRepository.nextSendWillFail(),
+            ),
+        )
+
+        handler.removeCallbacksAndMessages(null)
+        handler.postDelayed(
+            {
+                val result = LoadChatDetailUseCase(chatRepository).execute(chat.id)
+                renderChatDetailResult(
+                    chatId = chat.id,
+                    chatTitle = chat.title,
+                    result = result,
+                    statusMessage = when (result) {
+                        is ChatDetailLoadResult.Success -> "已进入 ${result.thread.chat.title}。"
+                        is ChatDetailLoadResult.Failed -> result.message
+                    },
+                )
+            },
+            CHAT_DETAIL_DELAY_MS,
+        )
+    }
+
+    private fun renderChatDetailResult(
+        chatId: String,
+        chatTitle: String,
+        result: ChatDetailLoadResult,
+        statusMessage: String?,
+        pendingOutgoingText: String? = null,
+        retryingMessageId: String? = null,
+    ) {
+        val session = currentSession ?: return
+        val contentState = when (result) {
+            is ChatDetailLoadResult.Success -> ChatDetailContentState.Ready(result.thread)
+            is ChatDetailLoadResult.Failed -> ChatDetailContentState.Error(result.message)
+        }
+
+        render(
+            MainScreenState.ChatDetail(
+                session = session,
+                chatId = chatId,
+                chatTitle = when (result) {
+                    is ChatDetailLoadResult.Success -> result.thread.chat.title
+                    is ChatDetailLoadResult.Failed -> chatTitle
+                },
+                statusMessage = statusMessage,
+                contentState = contentState,
+                composerDraft = chatComposerDraft,
+                pendingOutgoingText = pendingOutgoingText,
+                retryingMessageId = retryingMessageId,
+                nextSendWillFail = chatRepository.nextSendWillFail(),
+            ),
+        )
+    }
+
+    private fun submitMessage() {
+        val currentState = screenState as? MainScreenState.ChatDetail ?: return
+        val pendingText = chatComposerDraft.trim()
+        if (pendingText.isBlank()) {
+            render(currentState.copy(statusMessage = "请输入消息内容。", composerDraft = chatComposerDraft))
+            return
+        }
+
+        chatComposerDraft = ""
+        render(
+            currentState.copy(
+                statusMessage = "正在发送消息...",
+                composerDraft = chatComposerDraft,
+                pendingOutgoingText = pendingText,
+                retryingMessageId = null,
+            ),
+        )
+
+        handler.removeCallbacksAndMessages(null)
+        handler.postDelayed(
+            {
+                when (
+                    val result = SendChatMessageUseCase(chatRepository).execute(
+                        chatId = currentState.chatId,
+                        text = pendingText,
+                    )
+                ) {
+                    is SendMessageResult.Success -> {
+                        chatListStatusMessage = "会话 ${result.thread.chat.title} 已有新消息。"
+                        renderChatDetailResult(
+                            chatId = currentState.chatId,
+                            chatTitle = currentState.chatTitle,
+                            result = ChatDetailLoadResult.Success(result.thread),
+                            statusMessage = "消息已发送。",
+                        )
+                    }
+                    is SendMessageResult.InvalidInput -> {
+                        render(
+                            currentState.copy(
+                                statusMessage = result.message,
+                                composerDraft = chatComposerDraft,
+                                pendingOutgoingText = null,
+                            ),
+                        )
+                    }
+                    is SendMessageResult.Failed -> {
+                        chatListStatusMessage = "会话 ${currentState.chatTitle} 有一条发送失败的消息。"
+                        val contentState = result.thread?.let { ChatDetailContentState.Ready(it) }
+                            ?: ChatDetailContentState.Error(result.message)
+                        render(
+                            currentState.copy(
+                                statusMessage = result.message,
+                                contentState = contentState,
+                                composerDraft = chatComposerDraft,
+                                pendingOutgoingText = null,
+                                retryingMessageId = null,
+                                nextSendWillFail = chatRepository.nextSendWillFail(),
+                            ),
+                        )
+                    }
+                }
+            },
+            MESSAGE_SEND_DELAY_MS,
+        )
+    }
+
+    private fun retryFailedMessage(messageId: String) {
+        val currentState = screenState as? MainScreenState.ChatDetail ?: return
+        render(
+            currentState.copy(
+                statusMessage = "正在重试消息...",
+                composerDraft = chatComposerDraft,
+                retryingMessageId = messageId,
+            ),
+        )
+
+        handler.removeCallbacksAndMessages(null)
+        handler.postDelayed(
+            {
+                when (
+                    val result = RetryChatMessageUseCase(chatRepository).execute(
+                        chatId = currentState.chatId,
+                        messageId = messageId,
+                    )
+                ) {
+                    is RetryMessageResult.Success -> {
+                        chatListStatusMessage = "会话 ${result.thread.chat.title} 的失败消息已重试成功。"
+                        renderChatDetailResult(
+                            chatId = currentState.chatId,
+                            chatTitle = currentState.chatTitle,
+                            result = ChatDetailLoadResult.Success(result.thread),
+                            statusMessage = "消息已重试发送。",
+                        )
+                    }
+                    is RetryMessageResult.Failed -> {
+                        val contentState = result.thread?.let { ChatDetailContentState.Ready(it) }
+                            ?: ChatDetailContentState.Error(result.message)
+                        render(
+                            currentState.copy(
+                                statusMessage = result.message,
+                                contentState = contentState,
+                                composerDraft = chatComposerDraft,
+                                retryingMessageId = null,
+                                nextSendWillFail = chatRepository.nextSendWillFail(),
+                            ),
+                        )
+                    }
+                }
+            },
+            MESSAGE_RETRY_DELAY_MS,
+        )
+    }
+
+    private fun toggleNextSendFailure() {
+        val currentState = screenState as? MainScreenState.ChatDetail ?: return
+        val nextState = !chatRepository.nextSendWillFail()
+        chatRepository.setNextSendShouldFail(nextState)
+        render(
+            currentState.copy(
+                statusMessage = if (nextState) {
+                    "已开启“下一条发送失败”调试开关。"
+                } else {
+                    "已关闭“下一条发送失败”调试开关。"
+                },
+                composerDraft = chatComposerDraft,
+                nextSendWillFail = nextState,
+            ),
+        )
+    }
+
+    private fun returnToChatList() {
+        chatComposerDraft = ""
+        chatListStatusMessage = chatListStatusMessage ?: "已返回会话列表。"
+        loadChatList(showLoading = true, isRefresh = false)
+    }
+
+    private fun openComposePlaceholder() {
+        val currentState = screenState as? MainScreenState.ChatList ?: return
+        chatListStatusMessage = "写消息入口已保留，但真实新建会话将在后续切片实现。"
+        render(currentState.copy(statusMessage = chatListStatusMessage))
+    }
+
+    private fun openEditPlaceholder() {
+        val currentState = screenState as? MainScreenState.ChatList ?: return
+        chatListStatusMessage = "编辑入口已预留，本轮不实现批量编辑。"
+        render(currentState.copy(statusMessage = chatListStatusMessage))
+    }
+
+    private fun switchScenario(next: ChatListScenario) {
+        chatRepository.setChatListScenario(next)
+        searchDraft = ""
+        chatListStatusMessage = when (next) {
+            ChatListScenario.DEFAULT -> "已恢复默认 fixture 数据。"
+            ChatListScenario.EMPTY -> "已切换到空态 fixture。"
+            ChatListScenario.ERROR -> "已切换到错误态 fixture。"
+        }
+        loadChatList(showLoading = true, isRefresh = false)
+    }
+
     private fun logout() {
         handler.removeCallbacksAndMessages(null)
         LogoutUseCase(sessionRepository).execute()
         latestRestoreMessage = null
+        currentSession = null
+        searchDraft = ""
+        chatComposerDraft = ""
+        chatListStatusMessage = null
+        chatRepository.setChatListScenario(ChatListScenario.DEFAULT)
+        chatRepository.setNextSendShouldFail(false)
         render(MainScreenState.Login(formMessage = "已退出登录。"))
     }
 
     private fun seedExpiredSession() {
         sessionRepository.seedExpiredSession()
-        val homeState = screenState as? MainScreenState.Home ?: return
-        render(
-            homeState.copy(
-                statusMessage = "已写入失效会话。请重新启动应用验证恢复失败路径。",
-            ),
-        )
-    }
-
-    private fun renderHome(
-        session: UserSession,
-        statusMessage: String,
-    ) {
-        render(
-            MainScreenState.Home(
-                session = session,
-                chats = chatRepository.listChats(),
-                statusMessage = statusMessage,
-            ),
-        )
+        val currentState = screenState as? MainScreenState.ChatList ?: return
+        chatListStatusMessage = "已写入失效会话。请重新启动应用验证恢复失败路径。"
+        render(currentState.copy(statusMessage = chatListStatusMessage))
     }
 
     private fun render(state: MainScreenState) {
@@ -174,7 +528,8 @@ class MainActivity : Activity() {
         val content = when (state) {
             MainScreenState.Restoring -> buildRestoringScreen()
             is MainScreenState.Login -> buildLoginScreen(state)
-            is MainScreenState.Home -> buildHomeScreen(state)
+            is MainScreenState.ChatList -> buildChatListScreen(state)
+            is MainScreenState.ChatDetail -> buildChatDetailScreen(state)
         }
         setContentView(content)
     }
@@ -257,51 +612,808 @@ class MainActivity : Activity() {
         return wrapInScroll(container)
     }
 
-    private fun buildHomeScreen(state: MainScreenState.Home): View {
-        val container = baseColumn()
-
-        container.addView(titleView("Chats"))
-        container.addView(space(8))
-        container.addView(infoBanner(state.statusMessage))
-        container.addView(space(20))
-        container.addView(
-            sessionCard(
-                title = state.session.displayName,
-                subtitle = "${state.session.userId}  ·  ${state.session.phoneNumber}",
-            ),
+    private fun buildChatListScreen(state: MainScreenState.ChatList): View {
+        val container = baseColumn(
+            horizontalPaddingDp = 16,
+            topPaddingDp = 18,
+            bottomPaddingDp = 32,
         )
-        container.addView(space(20))
-        container.addView(labelView("Chat List Entry Shell"))
-        container.addView(space(8))
-        state.chats.forEachIndexed { index, chat ->
-            container.addView(chatRow(chat))
-            if (index < state.chats.lastIndex) {
-                container.addView(space(8))
+
+        container.addView(topBar())
+        container.addView(space(14))
+        container.addView(searchBar(state))
+        state.statusMessage?.let {
+            container.addView(space(12))
+            container.addView(infoBanner(it))
+        }
+        container.addView(space(14))
+
+        when (val content = state.contentState) {
+            ChatListContentState.Loading -> {
+                repeat(4) { index ->
+                    container.addView(chatSkeletonRow())
+                    if (index < 3) {
+                        container.addView(thinDivider())
+                    }
+                }
+            }
+            is ChatListContentState.Ready -> {
+                content.chats.forEachIndexed { index, chat ->
+                    container.addView(chatListRow(chat))
+                    if (index < content.chats.lastIndex) {
+                        container.addView(thinDivider())
+                    }
+                }
+            }
+            is ChatListContentState.Empty -> {
+                container.addView(
+                    emptyStateCard(
+                        title = content.title,
+                        body = content.body,
+                        primaryText = if (state.searchDraft.isBlank()) "恢复默认数据" else "清除搜索",
+                        onPrimaryClick = {
+                            if (state.searchDraft.isBlank()) {
+                                switchScenario(ChatListScenario.DEFAULT)
+                            } else {
+                                clearSearch()
+                            }
+                        },
+                    ),
+                )
+            }
+            is ChatListContentState.Error -> {
+                container.addView(
+                    errorStateCard(content.message) {
+                        loadChatList(showLoading = true, isRefresh = false)
+                    },
+                )
             }
         }
-        container.addView(space(16))
-        container.addView(
-            secondaryView("当前列表只用于承接 S1 成功落点，S2 列表刷新和搜索仍未验收。"),
-        )
-        container.addView(space(24))
-        container.addView(
-            primaryButton("退出登录") {
-                logout()
-            },
-        )
-        container.addView(space(12))
-        container.addView(
-            secondaryButton("写入失效会话用于测试") {
-                seedExpiredSession()
-            },
-        )
 
-        return wrapInScroll(container)
+        container.addView(space(18))
+        container.addView(debugSection())
+        container.addView(space(22))
+        container.addView(bottomNavigation())
+
+        return wrapInSwipeRefresh(
+            content = wrapInScroll(container),
+            isRefreshing = state.isRefreshing,
+        )
     }
 
-    private fun wrapInScroll(content: LinearLayout): ScrollView {
+    private fun buildChatDetailScreen(state: MainScreenState.ChatDetail): View {
+        val container = baseColumn(
+            horizontalPaddingDp = 16,
+            topPaddingDp = 16,
+            bottomPaddingDp = 24,
+            backgroundColor = Color.parseColor("#F2F6FA"),
+        )
+
+        container.addView(chatDetailTopBar(state))
+        state.statusMessage?.let {
+            container.addView(space(12))
+            container.addView(infoBanner(it))
+        }
+        container.addView(space(14))
+
+        when (val content = state.contentState) {
+            ChatDetailContentState.Loading -> {
+                val messagePanel = messagePanelContainer()
+                repeat(4) { index ->
+                    messagePanel.addView(messageSkeletonRow(outgoing = index % 2 == 1))
+                    if (index < 3) {
+                        messagePanel.addView(space(8))
+                    }
+                }
+                container.addView(messagePanel)
+                container.addView(space(14))
+                container.addView(composerSection(state, enabled = false))
+            }
+            is ChatDetailContentState.Ready -> {
+                container.addView(messageThreadView(content.thread, state))
+                container.addView(space(14))
+                container.addView(
+                    composerSection(
+                        state = state,
+                        enabled = state.pendingOutgoingText == null && state.retryingMessageId == null,
+                    ),
+                )
+                container.addView(space(14))
+                container.addView(detailDebugSection(state))
+            }
+            is ChatDetailContentState.Error -> {
+                container.addView(detailErrorStateCard(content.message))
+            }
+        }
+
+        return wrapInScroll(
+            content = container,
+            backgroundColor = Color.parseColor("#F2F6FA"),
+        )
+    }
+
+    private fun topBar(): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+
+            addView(
+                navPill("编辑") {
+                    openEditPlaceholder()
+                }.apply {
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                },
+            )
+            addView(
+                titleView("Chats", sizeSp = 22f).apply {
+                    gravity = Gravity.CENTER
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                },
+            )
+            addView(
+                navPill("写消息") {
+                    openComposePlaceholder()
+                }.apply {
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                },
+            )
+        }
+    }
+
+    private fun chatDetailTopBar(state: MainScreenState.ChatDetail): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+
+            addView(navPill("返回") { returnToChatList() })
+            addView(spaceWidth(10))
+            addView(
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                    addView(
+                        titleView(state.chatTitle, sizeSp = 20f).apply {
+                            gravity = Gravity.CENTER_HORIZONTAL
+                        },
+                    )
+                    addView(
+                        secondaryView("Demo chat detail").apply {
+                            gravity = Gravity.CENTER_HORIZONTAL
+                        },
+                    )
+                },
+            )
+            addView(spaceWidth(10))
+            addView(
+                TextView(context).apply {
+                    text = "S3"
+                    textSize = 12f
+                    setTypeface(Typeface.DEFAULT_BOLD)
+                    setTextColor(Color.parseColor("#7C8791"))
+                    background = roundedBackground(
+                        fillColor = Color.parseColor("#E7EEF5"),
+                        strokeColor = Color.TRANSPARENT,
+                        radiusDp = 14,
+                    )
+                    setPadding(dp(10), dp(8), dp(10), dp(8))
+                },
+            )
+        }
+    }
+
+    private fun searchBar(state: MainScreenState.ChatList): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+
+            addView(
+                inputField(
+                    initialValue = state.searchDraft,
+                    hint = "搜索",
+                    inputType = InputType.TYPE_CLASS_TEXT,
+                ) { searchDraft = it }.apply {
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                },
+            )
+            addView(spaceWidth(8))
+            addView(
+                navPill("搜索") {
+                    submitSearch()
+                },
+            )
+            if (state.searchDraft.isNotBlank()) {
+                addView(spaceWidth(8))
+                addView(
+                    navPill("清除") {
+                        clearSearch()
+                    },
+                )
+            }
+        }
+    }
+
+    private fun chatListRow(chat: ChatSummary): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(10), dp(4), dp(10))
+            setOnClickListener {
+                openChat(chat)
+            }
+
+            addView(avatarView(chat.avatarLabel))
+            addView(spaceWidth(12))
+
+            val bodyColumn = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+
+                val topLine = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+
+                    addView(
+                        TextView(context).apply {
+                            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                            text = chat.title
+                            textSize = 16f
+                            setTypeface(Typeface.DEFAULT_BOLD)
+                            setTextColor(Color.parseColor("#1B1F23"))
+                        },
+                    )
+                    addView(
+                        TextView(context).apply {
+                            text = chat.lastMessageAtLabel
+                            textSize = 12f
+                            setTextColor(Color.parseColor("#7C8791"))
+                        },
+                    )
+                }
+
+                addView(topLine)
+                addView(space(4))
+                addView(
+                    TextView(context).apply {
+                        text = chat.lastMessagePreview
+                        textSize = 14f
+                        maxLines = 1
+                        setTextColor(Color.parseColor("#667781"))
+                    },
+                )
+            }
+
+            addView(bodyColumn)
+            addView(spaceWidth(10))
+            addView(chatMetaColumn(chat))
+        }
+    }
+
+    private fun chatMetaColumn(chat: ChatSummary): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+
+            if (chat.isMuted) {
+                addView(
+                    TextView(context).apply {
+                        text = "静音"
+                        textSize = 11f
+                        setTextColor(Color.parseColor("#8D98A4"))
+                    },
+                )
+                addView(space(10))
+            } else {
+                addView(space(16))
+            }
+
+            addView(
+                unreadBadge(chat.unreadCount),
+            )
+        }
+    }
+
+    private fun chatSkeletonRow(): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(10), dp(4), dp(10))
+
+            addView(
+                View(context).apply {
+                    layoutParams = LinearLayout.LayoutParams(dp(54), dp(54))
+                    background = roundedBackground(
+                        fillColor = Color.parseColor("#EEF1F4"),
+                        strokeColor = Color.TRANSPARENT,
+                        radiusDp = 27,
+                    )
+                },
+            )
+            addView(spaceWidth(12))
+            addView(
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                    addView(skeletonBar(widthDp = 138))
+                    addView(space(8))
+                    addView(skeletonBar(widthDp = 196, heightDp = 12))
+                },
+            )
+            addView(spaceWidth(12))
+            addView(skeletonBar(widthDp = 34, heightDp = 12))
+        }
+    }
+
+    private fun messageThreadView(
+        thread: ChatThread,
+        state: MainScreenState.ChatDetail,
+    ): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBackground(
+                fillColor = Color.parseColor("#EAF1F7"),
+                strokeColor = Color.parseColor("#DCE7F1"),
+                radiusDp = 24,
+            )
+            setPadding(dp(12), dp(14), dp(12), dp(14))
+
+            thread.messages.forEachIndexed { index, message ->
+                addView(
+                    messageRow(
+                        message = message,
+                        visualState = if (state.retryingMessageId == message.id) {
+                            DeliveryState.SENDING
+                        } else {
+                            message.deliveryState
+                        },
+                        actionLabel = if (state.retryingMessageId == message.id) "重试中" else null,
+                    ),
+                )
+                if (index < thread.messages.lastIndex || state.pendingOutgoingText != null) {
+                    addView(space(8))
+                }
+            }
+
+            state.pendingOutgoingText?.let { text ->
+                addView(
+                    messageRow(
+                        message = Message(
+                            id = "pending",
+                            chatId = state.chatId,
+                            text = text,
+                            sentAtLabel = "刚刚",
+                            isOutgoing = true,
+                            deliveryState = DeliveryState.SENDING,
+                        ),
+                        visualState = DeliveryState.SENDING,
+                        actionLabel = "发送中",
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun messageRow(
+        message: Message,
+        visualState: DeliveryState,
+        actionLabel: String? = null,
+    ): LinearLayout {
+        val isOutgoing = message.isOutgoing
+        val isFailed = visualState == DeliveryState.FAILED
+        val isBusy = actionLabel == "发送中" || actionLabel == "重试中"
+
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = if (isOutgoing) Gravity.END else Gravity.START
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
+
+            addView(
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    background = roundedBackground(
+                        fillColor = when {
+                            isFailed -> Color.parseColor("#FDECEC")
+                            isOutgoing -> Color.parseColor("#E9F3FF")
+                            else -> Color.WHITE
+                        },
+                        strokeColor = when {
+                            isFailed -> Color.parseColor("#F1D0D0")
+                            isOutgoing -> Color.TRANSPARENT
+                            else -> Color.parseColor("#DDE7F0")
+                        },
+                        radiusDp = 20,
+                    )
+                    setPadding(dp(14), dp(12), dp(14), dp(12))
+
+                    addView(
+                        TextView(context).apply {
+                            text = message.text
+                            textSize = 15f
+                            setTextColor(Color.parseColor("#1B1F23"))
+                        },
+                    )
+                    addView(space(8))
+                    addView(
+                        TextView(context).apply {
+                            text = buildMessageMetaText(
+                                message = message,
+                                visualState = visualState,
+                                actionLabel = actionLabel,
+                            )
+                            textSize = 11f
+                            setTextColor(
+                                when {
+                                    isFailed -> Color.parseColor("#9A4B50")
+                                    isBusy -> Color.parseColor("#477BA7")
+                                    else -> Color.parseColor("#758290")
+                                },
+                            )
+                        },
+                    )
+
+                    if (isFailed) {
+                        addView(space(10))
+                        addView(
+                            secondaryButton("重试") {
+                                retryFailedMessage(message.id)
+                            },
+                        )
+                    }
+                }.apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    )
+                },
+            )
+        }
+    }
+
+    private fun buildMessageMetaText(
+        message: Message,
+        visualState: DeliveryState,
+        actionLabel: String?,
+    ): String {
+        if (!message.isOutgoing) {
+            return message.sentAtLabel
+        }
+
+        val statusLabel = when {
+            actionLabel != null -> actionLabel
+            visualState == DeliveryState.SENT -> "已发送"
+            visualState == DeliveryState.FAILED -> "发送失败"
+            else -> "发送中"
+        }
+        return "${message.sentAtLabel} · $statusLabel"
+    }
+
+    private fun messageSkeletonRow(outgoing: Boolean): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = if (outgoing) Gravity.END else Gravity.START
+            addView(
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    background = roundedBackground(
+                        fillColor = if (outgoing) {
+                            Color.parseColor("#E5EEF7")
+                        } else {
+                            Color.parseColor("#F7FAFD")
+                        },
+                        strokeColor = Color.TRANSPARENT,
+                        radiusDp = 20,
+                    )
+                    setPadding(dp(16), dp(14), dp(16), dp(14))
+                    addView(skeletonBar(widthDp = if (outgoing) 142 else 168))
+                    addView(space(8))
+                    addView(skeletonBar(widthDp = if (outgoing) 74 else 96, heightDp = 12))
+                },
+            )
+        }
+    }
+
+    private fun composerSection(
+        state: MainScreenState.ChatDetail,
+        enabled: Boolean,
+    ): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = roundedBackground(
+                fillColor = Color.WHITE,
+                strokeColor = Color.parseColor("#DCE4EC"),
+                radiusDp = 26,
+            )
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+
+            addView(
+                inputField(
+                    initialValue = state.composerDraft,
+                    hint = "输入消息",
+                    inputType = InputType.TYPE_CLASS_TEXT,
+                ) { chatComposerDraft = it }.apply {
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                    isEnabled = enabled
+                },
+            )
+            addView(spaceWidth(8))
+            addView(
+                primaryButton(
+                    text = if (enabled) "发送" else "处理中...",
+                    enabled = enabled,
+                ) {
+                    submitMessage()
+                },
+            )
+        }
+    }
+
+    private fun detailDebugSection(state: MainScreenState.ChatDetail): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBackground(
+                fillColor = Color.parseColor("#FAFBFD"),
+                strokeColor = Color.parseColor("#E6EDF4"),
+            )
+            setPadding(dp(16), dp(16), dp(16), dp(16))
+
+            addView(labelView("Demo controls (debug-only)"))
+            addView(space(10))
+            addView(secondaryView("用于验证 failed send / retry 路径，不计入最终产品交互。"))
+            addView(space(14))
+            addView(
+                primaryButton(
+                    text = if (state.nextSendWillFail) "关闭下一条发送失败" else "开启下一条发送失败",
+                ) {
+                    toggleNextSendFailure()
+                },
+            )
+            addView(space(10))
+            addView(
+                secondaryView(
+                    if (state.nextSendWillFail) {
+                        "当前状态: 下一次点击发送会进入 failed。"
+                    } else {
+                        "当前状态: 下一次发送按正常成功路径执行。"
+                    },
+                ),
+            )
+        }
+    }
+
+    private fun emptyStateCard(
+        title: String,
+        body: String,
+        primaryText: String,
+        onPrimaryClick: () -> Unit,
+    ): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBackground(
+                fillColor = Color.parseColor("#F8FAFC"),
+                strokeColor = Color.parseColor("#E7EDF4"),
+            )
+            setPadding(dp(20), dp(22), dp(20), dp(22))
+            gravity = Gravity.CENTER_HORIZONTAL
+
+            addView(titleView(title, sizeSp = 20f).apply { gravity = Gravity.CENTER_HORIZONTAL })
+            addView(space(8))
+            addView(
+                secondaryView(body).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL
+                },
+            )
+            addView(space(18))
+            addView(primaryButton(primaryText) { onPrimaryClick() })
+        }
+    }
+
+    private fun errorStateCard(
+        message: String,
+        onRetry: () -> Unit,
+    ): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBackground(
+                fillColor = Color.parseColor("#FFF6F5"),
+                strokeColor = Color.parseColor("#F4D7D4"),
+            )
+            setPadding(dp(20), dp(22), dp(20), dp(22))
+
+            addView(titleView("列表加载失败", sizeSp = 20f))
+            addView(space(8))
+            addView(secondaryView(message))
+            addView(space(18))
+            addView(primaryButton("重试加载") { onRetry() })
+        }
+    }
+
+    private fun detailErrorStateCard(message: String): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBackground(
+                fillColor = Color.parseColor("#FFF6F5"),
+                strokeColor = Color.parseColor("#F4D7D4"),
+            )
+            setPadding(dp(20), dp(22), dp(20), dp(22))
+
+            addView(titleView("聊天详情加载失败", sizeSp = 20f))
+            addView(space(8))
+            addView(secondaryView(message))
+            addView(space(18))
+            addView(
+                primaryButton("重试加载") {
+                    openChat(
+                        ChatSummary(
+                            id = (screenState as? MainScreenState.ChatDetail)?.chatId.orEmpty(),
+                            title = (screenState as? MainScreenState.ChatDetail)?.chatTitle.orEmpty(),
+                            lastMessagePreview = "",
+                            unreadCount = 0,
+                            lastMessageAtLabel = "",
+                            avatarLabel = "TG",
+                        ),
+                    )
+                },
+            )
+            addView(space(10))
+            addView(
+                secondaryButton("返回列表") {
+                    returnToChatList()
+                },
+            )
+        }
+    }
+
+    private fun debugSection(): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBackground(
+                fillColor = Color.parseColor("#FAFBFD"),
+                strokeColor = Color.parseColor("#E6EDF4"),
+            )
+            setPadding(dp(16), dp(16), dp(16), dp(16))
+
+            addView(labelView("Demo controls (debug-only)"))
+            addView(space(10))
+            addView(secondaryView("用于验证 empty / error / refresh / S1 失效恢复路径，不计入最终产品交互。"))
+            addView(space(14))
+            addView(
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(debugScenarioButton("默认", ChatListScenario.DEFAULT))
+                    addView(spaceWidth(8))
+                    addView(debugScenarioButton("空态", ChatListScenario.EMPTY))
+                    addView(spaceWidth(8))
+                    addView(debugScenarioButton("错误态", ChatListScenario.ERROR))
+                },
+            )
+            addView(space(12))
+            addView(primaryButton("退出登录") { logout() })
+            addView(space(10))
+            addView(secondaryButton("写入失效会话用于测试") { seedExpiredSession() })
+        }
+    }
+
+    private fun debugScenarioButton(
+        label: String,
+        scenario: ChatListScenario,
+    ): Button {
+        val active = chatRepository.currentChatListScenario() == scenario
+        return Button(this).apply {
+            text = label
+            isAllCaps = false
+            setTextColor(if (active) Color.WHITE else Color.parseColor("#2481CC"))
+            background = roundedBackground(
+                fillColor = if (active) Color.parseColor("#2481CC") else Color.parseColor("#EAF3FB"),
+                strokeColor = Color.TRANSPARENT,
+            )
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            setOnClickListener { switchScenario(scenario) }
+        }
+    }
+
+    private fun bottomNavigation(): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            background = roundedBackground(
+                fillColor = Color.parseColor("#F7FAFD"),
+                strokeColor = Color.parseColor("#E3EAF1"),
+                radiusDp = 26,
+            )
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+
+            addView(bottomTab("Chats", selected = true))
+            addView(bottomTab("Calls", selected = false))
+            addView(bottomTab("Settings", selected = false))
+        }
+    }
+
+    private fun bottomTab(
+        text: String,
+        selected: Boolean,
+    ): TextView {
+        return TextView(this).apply {
+            this.text = text
+            textSize = 13f
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = dp(4)
+                marginEnd = dp(4)
+            }
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            setTypeface(if (selected) Typeface.DEFAULT_BOLD else Typeface.DEFAULT)
+            setTextColor(
+                if (selected) Color.parseColor("#1B1F23") else Color.parseColor("#7B8794"),
+            )
+            background = roundedBackground(
+                fillColor = if (selected) Color.parseColor("#EAF3FB") else Color.TRANSPARENT,
+                strokeColor = Color.TRANSPARENT,
+                radiusDp = 20,
+            )
+        }
+    }
+
+    private fun avatarView(label: String): TextView {
+        return TextView(this).apply {
+            text = label
+            textSize = 16f
+            gravity = Gravity.CENTER
+            setTypeface(Typeface.DEFAULT_BOLD)
+            setTextColor(Color.parseColor("#1F5F8B"))
+            layoutParams = LinearLayout.LayoutParams(dp(54), dp(54))
+            background = roundedBackground(
+                fillColor = Color.parseColor("#EAF3FB"),
+                strokeColor = Color.TRANSPARENT,
+                radiusDp = 27,
+            )
+        }
+    }
+
+    private fun unreadBadge(count: Int): TextView {
+        return TextView(this).apply {
+            text = if (count > 0) count.toString() else ""
+            textSize = 12f
+            gravity = Gravity.CENTER
+            minWidth = dp(24)
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+            setTextColor(if (count > 0) Color.WHITE else Color.parseColor("#9AA6B2"))
+            background = roundedBackground(
+                fillColor = if (count > 0) Color.parseColor("#2481CC") else Color.parseColor("#E7EDF2"),
+                strokeColor = Color.TRANSPARENT,
+                radiusDp = 12,
+            )
+        }
+    }
+
+    private fun navPill(
+        text: String,
+        onClick: () -> Unit,
+    ): Button {
+        return Button(this).apply {
+            this.text = text
+            isAllCaps = false
+            setTextColor(Color.parseColor("#2481CC"))
+            background = roundedBackground(
+                fillColor = Color.parseColor("#EEF7FF"),
+                strokeColor = Color.TRANSPARENT,
+                radiusDp = 18,
+            )
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun wrapInScroll(
+        content: LinearLayout,
+        backgroundColor: Int = Color.WHITE,
+    ): ScrollView {
         return ScrollView(this).apply {
-            setBackgroundColor(Color.WHITE)
+            setBackgroundColor(backgroundColor)
+            isFillViewport = true
             addView(
                 content,
                 ViewGroup.LayoutParams(
@@ -312,14 +1424,42 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun wrapInSwipeRefresh(
+        content: View,
+        isRefreshing: Boolean,
+    ): SwipeRefreshLayout {
+        return SwipeRefreshLayout(this).apply {
+            setColorSchemeColors(Color.parseColor("#2481CC"))
+            setBackgroundColor(Color.WHITE)
+            this.isRefreshing = isRefreshing
+            setOnRefreshListener { refreshChats() }
+            addView(
+                content,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                ),
+            )
+        }
+    }
+
     private fun baseColumn(
         gravity: Int = Gravity.TOP,
         verticalGravity: Int = Gravity.NO_GRAVITY,
+        horizontalPaddingDp: Int = 24,
+        topPaddingDp: Int = 32,
+        bottomPaddingDp: Int = 32,
+        backgroundColor: Int = Color.WHITE,
     ): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.WHITE)
-            setPadding(dp(24), dp(32), dp(24), dp(32))
+            setBackgroundColor(backgroundColor)
+            setPadding(
+                dp(horizontalPaddingDp),
+                dp(topPaddingDp),
+                dp(horizontalPaddingDp),
+                dp(bottomPaddingDp),
+            )
             this.gravity = gravity or verticalGravity
         }
     }
@@ -465,74 +1605,26 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun sessionCard(
-        title: String,
-        subtitle: String,
-    ): LinearLayout {
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = roundedBackground(
-                fillColor = Color.parseColor("#F7F8FA"),
-                strokeColor = Color.TRANSPARENT,
+    private fun thinDivider(): View {
+        return View(this).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(1),
             )
-            setPadding(dp(16), dp(16), dp(16), dp(16))
-            addView(
-                TextView(context).apply {
-                    text = title
-                    textSize = 18f
-                    setTypeface(Typeface.DEFAULT_BOLD)
-                    setTextColor(Color.parseColor("#1B1F23"))
-                },
-            )
-            addView(space(6))
-            addView(
-                TextView(context).apply {
-                    text = subtitle
-                    textSize = 14f
-                    setTextColor(Color.parseColor("#667781"))
-                },
-            )
+            setBackgroundColor(Color.parseColor("#EDF1F5"))
         }
     }
 
-    private fun chatRow(chat: ChatSummary): LinearLayout {
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+    private fun skeletonBar(
+        widthDp: Int,
+        heightDp: Int = 14,
+    ): View {
+        return View(this).apply {
+            layoutParams = ViewGroup.LayoutParams(dp(widthDp), dp(heightDp))
             background = roundedBackground(
-                fillColor = Color.parseColor("#FFFFFF"),
-                strokeColor = Color.parseColor("#E8EDF1"),
-            )
-            setPadding(dp(16), dp(14), dp(16), dp(14))
-
-            val topLine = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                addView(
-                    TextView(context).apply {
-                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                        text = chat.title
-                        textSize = 16f
-                        setTypeface(Typeface.DEFAULT_BOLD)
-                        setTextColor(Color.parseColor("#1B1F23"))
-                    },
-                )
-                addView(
-                    TextView(context).apply {
-                        text = if (chat.unreadCount > 0) "${chat.unreadCount} 未读" else "已读"
-                        textSize = 12f
-                        setTextColor(Color.parseColor("#2481CC"))
-                    },
-                )
-            }
-
-            addView(topLine)
-            addView(space(6))
-            addView(
-                TextView(context).apply {
-                    text = chat.lastMessagePreview
-                    textSize = 14f
-                    setTextColor(Color.parseColor("#667781"))
-                },
+                fillColor = Color.parseColor("#EEF1F4"),
+                strokeColor = Color.TRANSPARENT,
+                radiusDp = heightDp / 2,
             )
         }
     }
@@ -540,10 +1632,11 @@ class MainActivity : Activity() {
     private fun roundedBackground(
         fillColor: Int,
         strokeColor: Int,
+        radiusDp: Int = 18,
     ): GradientDrawable {
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = dp(18).toFloat()
+            cornerRadius = dp(radiusDp).toFloat()
             setColor(fillColor)
             if (strokeColor != Color.TRANSPARENT) {
                 setStroke(dp(1), strokeColor)
@@ -560,11 +1653,37 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun spaceWidth(widthDp: Int): View {
+        return View(this).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                dp(widthDp),
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            )
+        }
+    }
+
+    private fun messagePanelContainer(): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBackground(
+                fillColor = Color.parseColor("#EAF1F7"),
+                strokeColor = Color.parseColor("#DCE7F1"),
+                radiusDp = 24,
+            )
+            setPadding(dp(12), dp(14), dp(12), dp(14))
+        }
+    }
+
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).roundToInt()
 
     private companion object {
         const val PREFS_NAME = "telegram_compare_session"
         const val RESTORE_DELAY_MS = 650L
         const val LOGIN_DELAY_MS = 450L
+        const val CHAT_LIST_DELAY_MS = 320L
+        const val REFRESH_DELAY_MS = 520L
+        const val CHAT_DETAIL_DELAY_MS = 260L
+        const val MESSAGE_SEND_DELAY_MS = 520L
+        const val MESSAGE_RETRY_DELAY_MS = 420L
     }
 }

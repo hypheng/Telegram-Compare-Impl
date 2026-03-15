@@ -29,4 +29,5 @@ android {
 dependencies {
     implementation(project(":shared-data"))
     implementation(project(":shared-domain"))
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
 }

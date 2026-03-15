@@ -43,6 +43,20 @@
 - `LoginResult`: `Success`、`InvalidInput`、`Failed`
 - `SessionRepository`: 恢复、登录、登出与持久化边界
 
+## S2 补充对象
+
+- `ChatListQuery`: 会话列表搜索关键词
+- `ChatListLoadResult`: `Success`、`Empty`、`Failed`
+- `ChatListRepository`: 列表读取、刷新与搜索边界
+
+## S3 补充对象
+
+- `ChatThread`: 会话摘要与消息流组合对象
+- `ChatDetailLoadResult`: `Success`、`Failed`
+- `SendMessageResult`: `Success`、`InvalidInput`、`Failed`
+- `RetryMessageResult`: `Success`、`Failed`
+- `ChatDetailRepository`: 详情读取、发送与失败重试边界
+
 ### 会话列表
 
 `empty -> loading -> ready | failed`

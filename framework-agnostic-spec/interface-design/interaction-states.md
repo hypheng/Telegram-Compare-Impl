@@ -25,6 +25,22 @@
 | Logout | 主壳点击退出登录 | 次级按钮禁用 | 返回登录页 | 轻量 banner，允许重试 |
 | Seed expired session (debug) | 主壳点击调试入口 | 轻量 toast / banner | 下次冷启动可验证 restore failed | 不展示系统级错误，只提示写入失败 |
 
+## S2 补充状态
+
+| Flow | Trigger | Loading Feedback | Success Feedback | Failure Feedback |
+|---|---|---|---|---|
+| Load chat list | 登录成功或恢复成功进入主壳 | 列表 skeleton / inline loading | 进入默认列表态 | 页面级 error state + retry |
+| Search chat list | 搜索框输入关键词 | 结果区域轻量更新 | 展示过滤结果 | 无结果空态，不用系统错误 |
+| Open chat from list | 点击列表行 | 行按压反馈 + 轻量 placeholder | 进入 `S3` 承接提示 | 仍停留列表并给出 banner |
+
+## S3 补充状态
+
+| Flow | Trigger | Loading Feedback | Success Feedback | Failure Feedback |
+|---|---|---|---|---|
+| Load chat detail | 点击会话列表行 | 详情 loading / skeleton bubble | 进入聊天详情默认态 | 页面级 error state + retry |
+| Send message | 点击发送 | 末尾 bubble 标记 sending | 气泡变 sent，列表预览回写 | 气泡标记 failed + retry |
+| Retry failed message | 点击 failed bubble 的 retry | 原 bubble 标记 retrying | 原气泡恢复 sent | 保持 failed，并给出恢复提示 |
+
 ## 手势与反馈
 
 - Chat list row: tap 进入，swipe 作为次级操作预留
