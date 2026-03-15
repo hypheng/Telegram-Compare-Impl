@@ -1,9 +1,9 @@
 # Optional Figma MCP configuration examples.
 # Pick one mode based on your tooling setup.
+# Remote mode is the safest default for this repository.
 
 [mcp_servers.figma_remote]
 url = "https://mcp.figma.com/mcp"
 
 [mcp_servers.figma_desktop]
-url = "http://127.0.0.1:3845/sse"
-
+url = "http://127.0.0.1:3845/mcp"

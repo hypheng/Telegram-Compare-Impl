@@ -32,12 +32,24 @@ check_optional_skill() {
   fi
 }
 
+check_optional_mcp() {
+  local server="$1"
+  local hint="$2"
+
+  if command -v codex >/dev/null 2>&1 && codex mcp get "$server" >/dev/null 2>&1; then
+    print_row "mcp:$server" "ready" "~/.codex/config.toml"
+  else
+    print_row "mcp:$server" "optional" "$hint"
+  fi
+}
+
 echo "[Codex repo-local]"
 print_row "Item" "Status" "Evidence"
 print_row "------------------------------" "----------" "------------------------------"
 check_path "AGENTS" "$repo_root/AGENTS.md"
 check_path "agents-readme" "$repo_root/.agents/README.md"
 check_path "codex-mcp-bootstrap" "$repo_root/.agents/setup/bootstrap-codex-mcp.sh"
+check_path "figma-mcp-bootstrap" "$repo_root/.agents/setup/bootstrap-figma-mcp.sh"
 check_path "codex-skill-installer" "$repo_root/.agents/setup/install-curated-skills.sh"
 check_path "codex-self-check" "$repo_root/.agents/setup/check-codex-ai-infra.sh"
 check_path "ai-gap-list" "$repo_root/.agents/todos/ai-gap-list.md"
@@ -62,6 +74,9 @@ for server in openaiDeveloperDocs context7; do
     failed=1
   fi
 done
+
+check_optional_mcp "figma_remote" "bash ./.agents/setup/bootstrap-figma-mcp.sh remote --apply"
+check_optional_mcp "figma_desktop" "bash ./.agents/setup/bootstrap-figma-mcp.sh desktop --apply"
 
 for skill in doc playwright screenshot security-best-practices security-threat-model; do
   if [[ -d "$codex_home/skills/$skill" ]]; then

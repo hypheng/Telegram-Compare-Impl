@@ -10,10 +10,10 @@
 - `interaction-states.md`: 关键交互和状态矩阵
 - `visual-system.md`: 视觉语言、排版、色彩、间距、组件原则
 - `design-delivery-workflow.md`: 从线框到 handoff 的工作流
+- `figma-delivery-plan.md`: Figma 设计与 ready-for-dev 交付计划
 
 ## 规则
 
 - 先定义信息层级和状态，再定义视觉样式
 - 先定义核心路径，再扩展边角场景
 - 设计交付必须能映射到 Android / iOS / CJMP / KMP 实现
-
