@@ -57,6 +57,14 @@
 - `RetryMessageResult`: `Success`、`Failed`
 - `ChatDetailRepository`: 详情读取、发送与失败重试边界
 
+## S4 补充对象
+
+- `SyncSnapshotRoute`: `CHAT_LIST`、`CHAT_DETAIL`
+- `SyncSnapshot`: 最近一次列表或详情快照
+- `SyncSnapshotRestoreResult`: `Restored`、`NoSnapshot`、`Failed`
+- `SyncSnapshotSaveResult`: `Success`、`Failed`
+- `SyncRepository`: snapshot 读写与清空边界
+
 ### 会话列表
 
 `empty -> loading -> ready | failed`

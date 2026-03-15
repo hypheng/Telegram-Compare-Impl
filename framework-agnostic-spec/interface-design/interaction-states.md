@@ -41,6 +41,13 @@
 | Send message | 点击发送 | 末尾 bubble 标记 sending | 气泡变 sent，列表预览回写 | 气泡标记 failed + retry |
 | Retry failed message | 点击 failed bubble 的 retry | 原 bubble 标记 retrying | 原气泡恢复 sent | 保持 failed，并给出恢复提示 |
 
+## S4 补充状态
+
+| Flow | Trigger | Loading Feedback | Success Feedback | Failure Feedback |
+|---|---|---|---|---|
+| Restore snapshot | App launch with active session + cached snapshot | `UI-S1` restoring progress | 直接恢复列表或详情，并显示缓存恢复 banner | 回退正常列表加载，并提示缓存不可用 |
+| Clear local cache (debug) | 点击 debug-only 清空缓存 | debug chip 短暂禁用 | 下次冷启动走正常路径 | banner 提示清空失败 |
+
 ## 手势与反馈
 
 - Chat list row: tap 进入，swipe 作为次级操作预留
@@ -48,6 +55,7 @@
 - Chat list scroll: 只允许列表 viewport 滚动，顶部、状态反馈、底部导航保持固定
 - Message composer: send 后立即清空输入，但保留失败恢复能力
 - Message thread scroll: 只允许消息区滚动，composer 和顶部栏保持固定
+- Snapshot restore: 恢复到列表或详情时优先使用内联 banner，而不是阻塞弹窗
 - Top actions: 顶部编辑、写消息、添加等入口优先使用轻量按压反馈，不做重按钮态
 - Back navigation: 遵循平台默认手势，不自造交互
 - Bottom tabs: 当前 tab 高亮切换要平滑，但不能做过重的缩放和弹跳

@@ -11,6 +11,12 @@ import com.telegram.compare.kmp.shareddomain.DeliveryState
 import com.telegram.compare.kmp.shareddomain.Message
 import com.telegram.compare.kmp.shareddomain.RetryMessageResult
 import com.telegram.compare.kmp.shareddomain.SendMessageResult
+import com.telegram.compare.kmp.shareddomain.SyncRepository
+import com.telegram.compare.kmp.shareddomain.SyncSnapshot
+import com.telegram.compare.kmp.shareddomain.SyncSnapshotRequest
+import com.telegram.compare.kmp.shareddomain.SyncSnapshotRestoreResult
+import com.telegram.compare.kmp.shareddomain.SyncSnapshotRoute
+import com.telegram.compare.kmp.shareddomain.SyncSnapshotSaveResult
 
 enum class ChatListScenario {
     DEFAULT,
@@ -18,7 +24,9 @@ enum class ChatListScenario {
     ERROR,
 }
 
-class InMemoryChatRepository : ChatDetailRepository, ChatListRepository {
+class InMemoryChatRepository(
+    private val snapshotStorage: SyncSnapshotStorage = InMemorySyncSnapshotStorage(),
+) : ChatDetailRepository, ChatListRepository, SyncRepository {
     private val chats = buildDefaultChats().toMutableList()
     private var chatListScenario: ChatListScenario = ChatListScenario.DEFAULT
     private var refreshCount = 0
@@ -148,6 +156,43 @@ class InMemoryChatRepository : ChatDetailRepository, ChatListRepository {
         )
     }
 
+    override fun restoreSnapshot(): SyncSnapshotRestoreResult {
+        val snapshot = snapshotStorage.read() ?: return SyncSnapshotRestoreResult.NoSnapshot
+
+        return runCatching {
+            applySnapshot(snapshot)
+            SyncSnapshotRestoreResult.Restored(snapshot)
+        }.getOrElse {
+            snapshotStorage.clear()
+            restoreDefaultFixtures()
+            SyncSnapshotRestoreResult.Failed("本地缓存不可用，已回退正常加载路径。")
+        }
+    }
+
+    override fun saveSnapshot(request: SyncSnapshotRequest): SyncSnapshotSaveResult {
+        val normalizedChatId = request.selectedChatId?.trim()?.ifBlank { null }
+        if (request.route == SyncSnapshotRoute.CHAT_DETAIL && normalizedChatId == null) {
+            return SyncSnapshotSaveResult.Failed("未找到需要缓存的聊天详情。")
+        }
+        if (normalizedChatId != null && chats.none { it.id == normalizedChatId }) {
+            return SyncSnapshotSaveResult.Failed("未找到需要缓存的目标会话。")
+        }
+
+        val snapshot = SyncSnapshot(
+            route = request.route,
+            searchKeyword = request.searchKeyword.trim(),
+            selectedChatId = normalizedChatId,
+            chats = chats.toList(),
+            threads = chats.mapNotNull { chat -> resolveThread(chat.id) },
+        )
+        snapshotStorage.write(snapshot)
+        return SyncSnapshotSaveResult.Success(snapshot)
+    }
+
+    override fun clearSnapshot() {
+        snapshotStorage.clear()
+    }
+
     fun setChatListScenario(next: ChatListScenario) {
         chatListScenario = next
     }
@@ -173,6 +218,39 @@ class InMemoryChatRepository : ChatDetailRepository, ChatListRepository {
     }
 
     fun nextSendWillFail(): Boolean = nextSendShouldFail
+
+    private fun applySnapshot(snapshot: SyncSnapshot) {
+        if (snapshot.route == SyncSnapshotRoute.CHAT_DETAIL && snapshot.selectedChatId == null) {
+            error("detail snapshot missing selectedChatId")
+        }
+
+        chats.clear()
+        chats += snapshot.chats
+
+        messagesByChat.clear()
+        snapshot.threads.forEach { thread ->
+            messagesByChat[thread.chat.id] = thread.messages.toMutableList()
+        }
+        chats.forEach { chat ->
+            if (!messagesByChat.containsKey(chat.id)) {
+                messagesByChat[chat.id] = mutableListOf()
+            }
+        }
+        if (snapshot.selectedChatId != null && chats.none { it.id == snapshot.selectedChatId }) {
+            error("snapshot selected chat not found")
+        }
+
+        chatListScenario = ChatListScenario.DEFAULT
+        refreshCount = 0
+        nextSendShouldFail = false
+        messageCounter = snapshot.threads
+            .flatMap { it.messages }
+            .mapNotNull { message ->
+                message.id.removePrefix("message-").toIntOrNull()
+            }
+            .maxOrNull()
+            ?: DEFAULT_MESSAGE_COUNTER
+    }
 
     private fun filterChats(keyword: String): List<ChatSummary> {
         if (keyword.isBlank()) {

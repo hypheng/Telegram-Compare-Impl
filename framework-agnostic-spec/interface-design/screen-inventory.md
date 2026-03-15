@@ -90,3 +90,10 @@
 - repo-side handoff: `framework-agnostic-assets/design-evidence/2026-03-15-S3-chat-detail-repo-handoff-brief.md`
 - 涉及屏幕: `UI-S4`
 - 范围说明: 覆盖真实详情、发送中、失败和重试；媒体、附件和群聊仍不纳入本切片
+
+### S4 本地缓存与离线恢复
+
+- 设计 handoff: `framework-agnostic-spec/interface-design/s4-local-cache-and-offline-restore.md`
+- repo-side handoff: `framework-agnostic-assets/design-evidence/2026-03-15-S4-cache-offline-repo-handoff-brief.md`
+- 涉及屏幕: `UI-S1`、`UI-S3`、`UI-S4`
+- 范围说明: 不新增独立主屏，而是在启动、列表和详情中增加 snapshot 恢复与缓存来源提示

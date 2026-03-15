@@ -5,6 +5,10 @@ import com.telegram.compare.kmp.shareddomain.ChatListLoadResult
 import com.telegram.compare.kmp.shareddomain.DeliveryState
 import com.telegram.compare.kmp.shareddomain.RetryMessageResult
 import com.telegram.compare.kmp.shareddomain.SendMessageResult
+import com.telegram.compare.kmp.shareddomain.SyncSnapshotRequest
+import com.telegram.compare.kmp.shareddomain.SyncSnapshotRestoreResult
+import com.telegram.compare.kmp.shareddomain.SyncSnapshotRoute
+import com.telegram.compare.kmp.shareddomain.SyncSnapshotSaveResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -112,5 +116,34 @@ class InMemoryChatRepositoryTest {
         assertIs<RetryMessageResult.Success>(retry)
         assertEquals(DeliveryState.SENT, retry.retriedMessage.deliveryState)
         assertEquals("Retry me", retry.thread.chat.lastMessagePreview)
+    }
+
+    @Test
+    fun restoresSavedDetailSnapshotIntoFreshRepository() {
+        val storage = InMemorySyncSnapshotStorage()
+        val firstRepository = InMemoryChatRepository(snapshotStorage = storage)
+        firstRepository.refreshChatList()
+        firstRepository.sendMessage(chatId = "chat-1", text = "Persist me")
+
+        val saved = firstRepository.saveSnapshot(
+            SyncSnapshotRequest(
+                route = SyncSnapshotRoute.CHAT_DETAIL,
+                searchKeyword = "telegram",
+                selectedChatId = "chat-1",
+            ),
+        )
+
+        assertIs<SyncSnapshotSaveResult.Success>(saved)
+
+        val restoredRepository = InMemoryChatRepository(snapshotStorage = storage)
+        val restored = restoredRepository.restoreSnapshot()
+        val detail = restoredRepository.loadChatDetail("chat-1")
+
+        assertIs<SyncSnapshotRestoreResult.Restored>(restored)
+        assertEquals(SyncSnapshotRoute.CHAT_DETAIL, restored.snapshot.route)
+        assertEquals("telegram", restored.snapshot.searchKeyword)
+        assertIs<ChatDetailLoadResult.Success>(detail)
+        assertTrue(detail.thread.messages.any { it.text == "Persist me" })
+        assertTrue(detail.thread.chat.lastMessagePreview.contains("Persist me"))
     }
 }

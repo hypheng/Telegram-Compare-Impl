@@ -11,10 +11,10 @@
 
 当前项目状态已经进入:
 
-- `S1-S3` 的 KMP 主用户工作流已完成代码、构建和设备验收
-- `S1-S3` 的 Figma handoff 仍因缺少可编辑文件而未闭环
-- `S2-S3` 的 CJMP 仍按当前范围保持 deferred
-- 下一条候选切片是 `S4 本地缓存与离线恢复`
+- `S1-S4` 的 KMP 核心聊天工作流已完成代码、构建和设备验收
+- `S1-S4` 的 Figma handoff 仍因缺少可编辑文件而未闭环
+- `S1-S4` 的 CJMP 仍按当前范围保持 deferred
+- 下一条是否继续推进 `S5-S8 backlog`，取决于产品范围决策，而不是 KMP 主路径未完成
 
 ## 分阶段路线
 
@@ -34,7 +34,7 @@
 | `S1` 登录与会话恢复 | `E1` 已完成，`D2` blocked，`I2` deferred | 已有 repo 内 UI 定义和 backfill brief，但缺真实 Figma file / frame links | KMP 已验收；CJMP 当前不作为闭环要求 | 这是一个 backfill 特例，不应成为后续切片默认方式 |
 | `S2` 会话列表 | `E1` 已完成，`D2` blocked，`I2` deferred | 已有 repo 内 UI 定义和 handoff brief，但缺真实 Figma file / frame links | KMP 已验收；CJMP 当前不作为闭环要求 | 设备侧已完成 default / search / refresh / empty / error 验收 |
 | `S3` 单聊详情与文本发送 | `E1` 已完成，`D2` blocked，`I2` deferred | 已有 repo 内 UI 定义和 handoff brief，但缺真实 Figma file / frame links | KMP 已验收；CJMP 当前不作为闭环要求 | KMP 主用户工作流现已从登录贯通到详情发送 |
-| `S4` 本地缓存与离线恢复 | backlog | 依赖前序切片 UI 和状态稳定 | 依赖 `S1-S3` 的领域与存储边界 | 更适合在主路径闭环后推进 |
+| `S4` 本地缓存与离线恢复 | `E1` 已完成，`D2` blocked，`I2` deferred | 已有 repo 内 UI 定义和 handoff brief，但缺真实 Figma file / frame links | KMP 已验收；CJMP 当前不作为闭环要求 | KMP 现已具备列表/详情 snapshot 恢复、清空缓存回退和 logout 清缓存路径 |
 
 ## S1 当前执行清单
 

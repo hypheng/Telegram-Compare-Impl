@@ -26,6 +26,7 @@ import com.telegram.compare.kmp.shareddomain.ChatListLoadResult
 import com.telegram.compare.kmp.shareddomain.ChatSummary
 import com.telegram.compare.kmp.shareddomain.ChatThread
 import com.telegram.compare.kmp.shareddomain.DeliveryState
+import com.telegram.compare.kmp.shareddomain.ClearSyncSnapshotUseCase
 import com.telegram.compare.kmp.shareddomain.LoadChatDetailUseCase
 import com.telegram.compare.kmp.shareddomain.LoadChatListUseCase
 import com.telegram.compare.kmp.shareddomain.LoginResult
@@ -36,20 +37,25 @@ import com.telegram.compare.kmp.shareddomain.RefreshChatListUseCase
 import com.telegram.compare.kmp.shareddomain.RestoreSessionUseCase
 import com.telegram.compare.kmp.shareddomain.RetryChatMessageUseCase
 import com.telegram.compare.kmp.shareddomain.RetryMessageResult
+import com.telegram.compare.kmp.shareddomain.RestoreSyncSnapshotUseCase
+import com.telegram.compare.kmp.shareddomain.SaveSyncSnapshotUseCase
 import com.telegram.compare.kmp.shareddomain.SendChatMessageUseCase
 import com.telegram.compare.kmp.shareddomain.SendMessageResult
 import com.telegram.compare.kmp.shareddomain.SessionRestoreResult
+import com.telegram.compare.kmp.shareddomain.SyncSnapshotRestoreResult
+import com.telegram.compare.kmp.shareddomain.SyncSnapshotRoute
 import com.telegram.compare.kmp.shareddomain.UserSession
 import com.telegram.compare.kmp.shareddata.ChatListScenario
 import com.telegram.compare.kmp.shareddata.DemoSessionRepository
 import com.telegram.compare.kmp.shareddata.InMemoryChatRepository
 import com.telegram.compare.kmp.shareddata.PreferencesSessionStorage
+import com.telegram.compare.kmp.shareddata.PreferencesSyncSnapshotStorage
 import kotlin.math.roundToInt
 
 class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
 
-    private val chatRepository = InMemoryChatRepository()
+    private lateinit var chatRepository: InMemoryChatRepository
     private lateinit var sessionRepository: DemoSessionRepository
 
     private var screenState: MainScreenState = MainScreenState.Restoring
@@ -64,9 +70,16 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        val sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+
         sessionRepository = DemoSessionRepository(
             storage = PreferencesSessionStorage(
-                sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE),
+                sharedPreferences = sharedPreferences,
+            ),
+        )
+        chatRepository = InMemoryChatRepository(
+            snapshotStorage = PreferencesSyncSnapshotStorage(
+                sharedPreferences = sharedPreferences,
             ),
         )
 
@@ -100,8 +113,7 @@ class MainActivity : Activity() {
                         currentSession = result.session
                         searchDraft = ""
                         chatComposerDraft = ""
-                        chatListStatusMessage = "已恢复上次会话，正在加载会话列表。"
-                        loadChatList(showLoading = true, isRefresh = false)
+                        restoreCachedContextOrLoadDefault()
                     }
                     SessionRestoreResult.NoSession -> {
                         latestRestoreMessage = null
@@ -123,6 +135,54 @@ class MainActivity : Activity() {
             },
             RESTORE_DELAY_MS,
         )
+    }
+
+    private fun restoreCachedContextOrLoadDefault() {
+        when (val snapshotResult = RestoreSyncSnapshotUseCase(chatRepository).execute()) {
+            is SyncSnapshotRestoreResult.Restored -> {
+                val snapshot = snapshotResult.snapshot
+                searchDraft = snapshot.searchKeyword
+                chatComposerDraft = ""
+                when (snapshot.route) {
+                    SyncSnapshotRoute.CHAT_LIST -> {
+                        chatListStatusMessage = "已从本地缓存恢复最近上下文，可能不是最新内容。"
+                        renderChatListResult(
+                            LoadChatListUseCase(chatRepository).execute(searchDraft),
+                        )
+                    }
+                    SyncSnapshotRoute.CHAT_DETAIL -> {
+                        val selectedChatId = snapshot.selectedChatId
+                        if (selectedChatId == null) {
+                            chatListStatusMessage = "本地缓存不可用，正在加载会话列表。"
+                            loadChatList(showLoading = true, isRefresh = false)
+                            return
+                        }
+                        when (val detailResult = LoadChatDetailUseCase(chatRepository).execute(selectedChatId)) {
+                            is ChatDetailLoadResult.Success -> {
+                                renderChatDetailResult(
+                                    chatId = selectedChatId,
+                                    chatTitle = detailResult.thread.chat.title,
+                                    result = detailResult,
+                                    statusMessage = "已从本地缓存恢复最近上下文，可能不是最新内容。",
+                                )
+                            }
+                            is ChatDetailLoadResult.Failed -> {
+                                chatListStatusMessage = "本地缓存不可用，正在加载会话列表。"
+                                loadChatList(showLoading = true, isRefresh = false)
+                            }
+                        }
+                    }
+                }
+            }
+            SyncSnapshotRestoreResult.NoSnapshot -> {
+                chatListStatusMessage = "已恢复上次会话，正在加载会话列表。"
+                loadChatList(showLoading = true, isRefresh = false)
+            }
+            is SyncSnapshotRestoreResult.Failed -> {
+                chatListStatusMessage = snapshotResult.message
+                loadChatList(showLoading = true, isRefresh = false)
+            }
+        }
     }
 
     private fun submitLogin() {
@@ -148,6 +208,7 @@ class MainActivity : Activity() {
                         currentSession = result.session
                         searchDraft = ""
                         chatComposerDraft = ""
+                        ClearSyncSnapshotUseCase(chatRepository).execute()
                         chatListStatusMessage = "登录成功，正在加载会话列表。"
                         loadChatList(showLoading = true, isRefresh = false)
                     }
@@ -250,6 +311,10 @@ class MainActivity : Activity() {
                 isRefreshing = false,
             ),
         )
+
+        if (result is ChatListLoadResult.Success) {
+            persistChatListSnapshot()
+        }
     }
 
     private fun submitSearch() {
@@ -348,6 +413,25 @@ class MainActivity : Activity() {
                 nextSendWillFail = chatRepository.nextSendWillFail(),
             ),
         )
+
+        if (result is ChatDetailLoadResult.Success) {
+            persistChatDetailSnapshot(chatId = chatId)
+        }
+    }
+
+    private fun persistChatListSnapshot() {
+        SaveSyncSnapshotUseCase(chatRepository).execute(
+            route = SyncSnapshotRoute.CHAT_LIST,
+            searchKeyword = searchDraft,
+        )
+    }
+
+    private fun persistChatDetailSnapshot(chatId: String) {
+        SaveSyncSnapshotUseCase(chatRepository).execute(
+            route = SyncSnapshotRoute.CHAT_DETAIL,
+            searchKeyword = searchDraft,
+            selectedChatId = chatId,
+        )
     }
 
     private fun submitMessage() {
@@ -409,6 +493,9 @@ class MainActivity : Activity() {
                                 nextSendWillFail = chatRepository.nextSendWillFail(),
                             ),
                         )
+                        if (result.thread != null) {
+                            persistChatDetailSnapshot(chatId = currentState.chatId)
+                        }
                     }
                 }
             },
@@ -456,6 +543,9 @@ class MainActivity : Activity() {
                                 nextSendWillFail = chatRepository.nextSendWillFail(),
                             ),
                         )
+                        if (result.thread != null) {
+                            persistChatDetailSnapshot(chatId = currentState.chatId)
+                        }
                     }
                 }
             },
@@ -513,8 +603,28 @@ class MainActivity : Activity() {
         loadChatList(showLoading = true, isRefresh = false)
     }
 
+    private fun clearLocalSnapshot() {
+        ClearSyncSnapshotUseCase(chatRepository).execute()
+        chatListStatusMessage = "已清空本地缓存。下次冷启动将走正常加载路径。"
+
+        when (val currentState = screenState) {
+            is MainScreenState.ChatList -> render(
+                currentState.copy(
+                    statusMessage = chatListStatusMessage,
+                ),
+            )
+            is MainScreenState.ChatDetail -> render(
+                currentState.copy(
+                    statusMessage = chatListStatusMessage,
+                ),
+            )
+            else -> Unit
+        }
+    }
+
     private fun logout() {
         handler.removeCallbacksAndMessages(null)
+        ClearSyncSnapshotUseCase(chatRepository).execute()
         LogoutUseCase(sessionRepository).execute()
         latestRestoreMessage = null
         currentSession = null
@@ -1354,6 +1464,12 @@ class MainActivity : Activity() {
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 },
             )
+            addView(spaceWidth(10))
+            addView(
+                compactChipButton("清空缓存", active = false) {
+                    clearLocalSnapshot()
+                },
+            )
         }
     }
 
@@ -1487,6 +1603,17 @@ class MainActivity : Activity() {
                         }.apply {
                             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                         },
+                    )
+                },
+            )
+            addView(space(8))
+            addView(
+                compactChipButton("清空本地缓存", active = false) {
+                    clearLocalSnapshot()
+                }.apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
                     )
                 },
             )
