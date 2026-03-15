@@ -9,8 +9,9 @@
 | UI-S3 | Chat List | 浏览会话与未读状态 | loading, empty, ready, error |
 | UI-S4 | Chat Detail | 查看消息、发送文本、失败重试 | loading, ready, sending, failed |
 | UI-S5 | Search | 搜索会话和消息 | idle, searching, empty, result |
-| UI-S6 | Settings / Profile | 管理资料与偏好 | loading, ready |
+| UI-S6 | Settings / Profile | 管理资料与偏好 | loading, ready, failed |
 | UI-S7 | AI Overlay | 展示 AI summary / draft / todo | closed, loading, ready, failed |
+| UI-S8 | Media Picker Sheet | 选择并发送 fixture 图片 | closed, loading, ready, failed |
 
 ## 关键屏幕的 Telegram 风格约束
 
@@ -61,6 +62,17 @@
 - 搜索页和搜索态要延续 Telegram 的搜索框、列表密度和结果层级
 - 搜索结果优先复用会话列表和消息行的视觉语言，不单独发明卡片样式
 
+### UI-S6 Settings / Profile
+
+- 设置页延续 Telegram 的轻量分组设置风格，而不是调试控制台
+- profile hero、偏好行和危险操作分组要清晰，但保持克制的白底 + 细边框语义
+- 页面撑满视口，顶部和底部导航固定，只有内容区滚动
+
+### UI-S8 Media Picker Sheet
+
+- media picker 作为底部覆盖层出现，不应把聊天详情改造成整页表单
+- fixture 图片优先使用统一圆角缩略卡和短标签，保持与 Telegram 风格同向
+
 ## 每个屏幕至少要定义
 
 - 主任务
@@ -97,3 +109,21 @@
 - repo-side handoff: `framework-agnostic-assets/design-evidence/2026-03-15-S4-cache-offline-repo-handoff-brief.md`
 - 涉及屏幕: `UI-S1`、`UI-S3`、`UI-S4`
 - 范围说明: 不新增独立主屏，而是在启动、列表和详情中增加 snapshot 恢复与缓存来源提示
+
+### S5 搜索会话 / 消息
+
+- 设计 handoff: `framework-agnostic-spec/interface-design/s5-search-chats-and-messages.md`
+- 涉及屏幕: `UI-S3`、`UI-S5`、`UI-S4`
+- 范围说明: 保留 `S2` 的列表内过滤，并新增独立全局搜索结果页与消息命中跳转
+
+### S6 设置与个人资料
+
+- 设计 handoff: `framework-agnostic-spec/interface-design/s6-settings-and-profile.md`
+- 涉及屏幕: `UI-S3`、`UI-S5`、`UI-S6`
+- 范围说明: 把底部 `Settings` tab 升级成真实设置页，覆盖资料摘要、偏好项切换和设置页 logout
+
+### S7 媒体消息
+
+- 设计 handoff: `framework-agnostic-spec/interface-design/s7-media-messages.md`
+- 涉及屏幕: `UI-S4`、`UI-S8`
+- 范围说明: 在聊天详情中增加图片消息与 media picker，不扩展到真实相册权限和复杂媒体浏览

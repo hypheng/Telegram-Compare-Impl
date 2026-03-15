@@ -24,6 +24,10 @@
 - `MessageSendFailed`
 - `SyncCompleted`
 - `SearchSubmitted`
+- `SettingsOpened`
+- `PreferenceChanged`
+- `MediaPickerOpened`
+- `MediaMessageSent`
 - `AiActionTriggered`
 
 ## 关键状态机
@@ -64,6 +68,31 @@
 - `SyncSnapshotRestoreResult`: `Restored`、`NoSnapshot`、`Failed`
 - `SyncSnapshotSaveResult`: `Success`、`Failed`
 - `SyncRepository`: snapshot 读写与清空边界
+
+## S5 补充对象
+
+- `SearchQuery`: 全局搜索关键词
+- `MessageSearchHit`: 消息级搜索命中
+- `SearchLoadResult`: `Success`、`Empty`、`Failed`
+- `SearchRepository`: 全局搜索边界
+
+## S6 补充对象
+
+- `UserProfileSummary`: 设置页资料摘要
+- `PreferenceKey`: 偏好项标识
+- `UserPreference`: 单个偏好定义
+- `SettingsSnapshot`: profile 与 preferences 的组合
+- `SettingsLoadResult`: `Success`、`Failed`
+- `UpdatePreferenceResult`: `Success`、`Failed`
+- `SettingsRepository`: 设置读取、偏好写入边界
+
+## S7 补充对象
+
+- `MediaAttachment`: 图片 fixture 描述
+- `MediaPickerLoadResult`: `Success`、`Failed`
+- `SendMediaResult`: `Success`、`Failed`
+- `Message`: 扩展可选媒体负载
+- `ChatDetailRepository`: 扩展媒体选择与发送边界
 
 ### 会话列表
 

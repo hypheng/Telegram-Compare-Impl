@@ -36,7 +36,13 @@ class PreferencesSessionStorage(
     }
 
     override fun clear() {
-        sharedPreferences.edit().clear().apply()
+        sharedPreferences.edit()
+            .remove(KEY_SESSION_ID)
+            .remove(KEY_USER_ID)
+            .remove(KEY_DISPLAY_NAME)
+            .remove(KEY_PHONE_NUMBER)
+            .remove(KEY_STATUS)
+            .apply()
     }
 
     private companion object {

@@ -83,4 +83,15 @@ private class FakeChatDetailRepository : ChatDetailRepository {
         lastRetriedMessageId = messageId
         return RetryMessageResult.Failed("stub")
     }
+
+    override fun loadAvailableMedia(): MediaPickerLoadResult {
+        return MediaPickerLoadResult.Failed("stub")
+    }
+
+    override fun sendMedia(
+        chatId: String,
+        mediaId: String,
+    ): SendMediaResult {
+        return SendMediaResult.Failed("stub")
+    }
 }

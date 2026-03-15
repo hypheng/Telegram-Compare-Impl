@@ -30,6 +30,9 @@
 - `S2 会话列表`: 详见 `framework-agnostic-spec/requirements/s2-chat-list.md`
 - `S3 单聊详情与文本发送`: 详见 `framework-agnostic-spec/requirements/s3-chat-detail-and-send.md`
 - `S4 本地缓存与离线恢复`: 详见 `framework-agnostic-spec/requirements/s4-local-cache-and-offline-restore.md`
+- `S5 搜索会话 / 消息`: 详见 `framework-agnostic-spec/requirements/s5-search-chats-and-messages.md`
+- `S6 设置与个人资料`: 详见 `framework-agnostic-spec/requirements/s6-settings-and-profile.md`
+- `S7 媒体消息`: 详见 `framework-agnostic-spec/requirements/s7-media-messages.md`
 
 ## 非功能要求
 

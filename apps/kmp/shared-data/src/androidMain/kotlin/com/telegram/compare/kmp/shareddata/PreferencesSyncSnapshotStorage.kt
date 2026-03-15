@@ -4,6 +4,7 @@ import android.content.SharedPreferences
 import com.telegram.compare.kmp.shareddomain.ChatSummary
 import com.telegram.compare.kmp.shareddomain.ChatThread
 import com.telegram.compare.kmp.shareddomain.DeliveryState
+import com.telegram.compare.kmp.shareddomain.MediaAttachment
 import com.telegram.compare.kmp.shareddomain.Message
 import com.telegram.compare.kmp.shareddomain.SyncSnapshot
 import com.telegram.compare.kmp.shareddomain.SyncSnapshotRoute
@@ -109,6 +110,7 @@ private fun JSONObject.toMessage(): Message {
         sentAtLabel = getString("sentAtLabel"),
         isOutgoing = getBoolean("isOutgoing"),
         deliveryState = DeliveryState.valueOf(getString("deliveryState")),
+        mediaAttachment = optJSONObject("mediaAttachment")?.toMediaAttachment(),
     )
 }
 
@@ -140,4 +142,22 @@ private fun Message.toJson(): JSONObject {
         .put("sentAtLabel", sentAtLabel)
         .put("isOutgoing", isOutgoing)
         .put("deliveryState", deliveryState.name)
+        .put("mediaAttachment", mediaAttachment?.toJson())
+}
+
+private fun JSONObject.toMediaAttachment(): MediaAttachment {
+    return MediaAttachment(
+        id = getString("id"),
+        title = getString("title"),
+        defaultCaption = getString("defaultCaption"),
+        accentColorHex = getString("accentColorHex"),
+    )
+}
+
+private fun MediaAttachment.toJson(): JSONObject {
+    return JSONObject()
+        .put("id", id)
+        .put("title", title)
+        .put("defaultCaption", defaultCaption)
+        .put("accentColorHex", accentColorHex)
 }

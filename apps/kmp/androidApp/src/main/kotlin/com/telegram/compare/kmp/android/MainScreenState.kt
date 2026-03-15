@@ -2,6 +2,9 @@ package com.telegram.compare.kmp.android
 
 import com.telegram.compare.kmp.shareddomain.ChatThread
 import com.telegram.compare.kmp.shareddomain.ChatSummary
+import com.telegram.compare.kmp.shareddomain.MediaAttachment
+import com.telegram.compare.kmp.shareddomain.MessageSearchHit
+import com.telegram.compare.kmp.shareddomain.SettingsSnapshot
 import com.telegram.compare.kmp.shareddomain.UserSession
 
 sealed interface MainScreenState {
@@ -21,6 +24,19 @@ sealed interface MainScreenState {
         val isRefreshing: Boolean = false,
     ) : MainScreenState
 
+    data class Search(
+        val session: UserSession,
+        val queryDraft: String = "",
+        val statusMessage: String? = null,
+        val contentState: SearchContentState = SearchContentState.Idle,
+    ) : MainScreenState
+
+    data class Settings(
+        val session: UserSession,
+        val statusMessage: String? = null,
+        val contentState: SettingsContentState = SettingsContentState.Loading,
+    ) : MainScreenState
+
     data class ChatDetail(
         val session: UserSession,
         val chatId: String,
@@ -32,8 +48,17 @@ sealed interface MainScreenState {
         val pendingOutgoingText: String? = null,
         val retryingMessageId: String? = null,
         val nextSendWillFail: Boolean = false,
+        val highlightedMessageId: String? = null,
+        val returnToSearch: SearchReturnState? = null,
+        val mediaPickerState: MediaPickerState = MediaPickerState.Closed,
     ) : MainScreenState
 }
+
+data class SearchReturnState(
+    val queryDraft: String,
+    val statusMessage: String? = null,
+    val contentState: SearchContentState = SearchContentState.Idle,
+)
 
 sealed interface ChatListContentState {
     object Loading : ChatListContentState
@@ -54,4 +79,40 @@ sealed interface ChatDetailContentState {
     data class Ready(val thread: ChatThread) : ChatDetailContentState
 
     data class Error(val message: String) : ChatDetailContentState
+}
+
+sealed interface SearchContentState {
+    object Idle : SearchContentState
+
+    object Loading : SearchContentState
+
+    data class Ready(
+        val chatResults: List<ChatSummary>,
+        val messageResults: List<MessageSearchHit>,
+    ) : SearchContentState
+
+    data class Empty(
+        val title: String,
+        val body: String,
+    ) : SearchContentState
+
+    data class Error(val message: String) : SearchContentState
+}
+
+sealed interface SettingsContentState {
+    object Loading : SettingsContentState
+
+    data class Ready(val snapshot: SettingsSnapshot) : SettingsContentState
+
+    data class Error(val message: String) : SettingsContentState
+}
+
+sealed interface MediaPickerState {
+    object Closed : MediaPickerState
+
+    object Loading : MediaPickerState
+
+    data class Ready(val attachments: List<MediaAttachment>) : MediaPickerState
+
+    data class Error(val message: String) : MediaPickerState
 }

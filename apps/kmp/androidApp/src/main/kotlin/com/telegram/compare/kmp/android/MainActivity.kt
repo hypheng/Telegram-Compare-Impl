@@ -32,24 +32,39 @@ import com.telegram.compare.kmp.shareddomain.LoadChatListUseCase
 import com.telegram.compare.kmp.shareddomain.LoginResult
 import com.telegram.compare.kmp.shareddomain.LoginWithCodeUseCase
 import com.telegram.compare.kmp.shareddomain.LogoutUseCase
+import com.telegram.compare.kmp.shareddomain.LoadAvailableMediaUseCase
 import com.telegram.compare.kmp.shareddomain.Message
+import com.telegram.compare.kmp.shareddomain.MediaAttachment
+import com.telegram.compare.kmp.shareddomain.MediaPickerLoadResult
+import com.telegram.compare.kmp.shareddomain.MessageSearchHit
+import com.telegram.compare.kmp.shareddomain.LoadSettingsUseCase
+import com.telegram.compare.kmp.shareddomain.PreferenceKey
 import com.telegram.compare.kmp.shareddomain.RefreshChatListUseCase
 import com.telegram.compare.kmp.shareddomain.RestoreSessionUseCase
 import com.telegram.compare.kmp.shareddomain.RetryChatMessageUseCase
 import com.telegram.compare.kmp.shareddomain.RetryMessageResult
 import com.telegram.compare.kmp.shareddomain.RestoreSyncSnapshotUseCase
 import com.telegram.compare.kmp.shareddomain.SaveSyncSnapshotUseCase
+import com.telegram.compare.kmp.shareddomain.SearchChatsAndMessagesUseCase
+import com.telegram.compare.kmp.shareddomain.SearchLoadResult
 import com.telegram.compare.kmp.shareddomain.SendChatMessageUseCase
+import com.telegram.compare.kmp.shareddomain.SendChatMediaUseCase
+import com.telegram.compare.kmp.shareddomain.SendMediaResult
 import com.telegram.compare.kmp.shareddomain.SendMessageResult
 import com.telegram.compare.kmp.shareddomain.SessionRestoreResult
+import com.telegram.compare.kmp.shareddomain.SettingsLoadResult
 import com.telegram.compare.kmp.shareddomain.SyncSnapshotRestoreResult
 import com.telegram.compare.kmp.shareddomain.SyncSnapshotRoute
+import com.telegram.compare.kmp.shareddomain.TogglePreferenceUseCase
+import com.telegram.compare.kmp.shareddomain.UpdatePreferenceResult
 import com.telegram.compare.kmp.shareddomain.UserSession
 import com.telegram.compare.kmp.shareddata.ChatListScenario
 import com.telegram.compare.kmp.shareddata.DemoSessionRepository
 import com.telegram.compare.kmp.shareddata.InMemoryChatRepository
+import com.telegram.compare.kmp.shareddata.LocalSettingsRepository
 import com.telegram.compare.kmp.shareddata.PreferencesSessionStorage
 import com.telegram.compare.kmp.shareddata.PreferencesSyncSnapshotStorage
+import com.telegram.compare.kmp.shareddata.PreferencesUserSettingsStorage
 import kotlin.math.roundToInt
 
 class MainActivity : Activity() {
@@ -57,6 +72,7 @@ class MainActivity : Activity() {
 
     private lateinit var chatRepository: InMemoryChatRepository
     private lateinit var sessionRepository: DemoSessionRepository
+    private lateinit var settingsRepository: LocalSettingsRepository
 
     private var screenState: MainScreenState = MainScreenState.Restoring
     private var phoneDraft = "+86 138 0000 0000"
@@ -65,7 +81,10 @@ class MainActivity : Activity() {
     private var currentSession: UserSession? = null
     private var chatListStatusMessage: String? = null
     private var searchDraft: String = ""
+    private var globalSearchDraft: String = ""
     private var chatComposerDraft: String = ""
+    private var lastChatListState: MainScreenState.ChatList? = null
+    private var lastSettingsEntryState: MainScreenState? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -82,6 +101,11 @@ class MainActivity : Activity() {
                 sharedPreferences = sharedPreferences,
             ),
         )
+        settingsRepository = LocalSettingsRepository(
+            storage = PreferencesUserSettingsStorage(
+                sharedPreferences = sharedPreferences,
+            ),
+        )
 
         render(MainScreenState.Restoring)
         startRestoreFlow()
@@ -94,11 +118,25 @@ class MainActivity : Activity() {
 
     @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onBackPressed() {
-        if (screenState is MainScreenState.ChatDetail) {
-            returnToChatList()
-            return
+        when (screenState) {
+            is MainScreenState.ChatDetail -> {
+                if ((screenState as MainScreenState.ChatDetail).mediaPickerState != MediaPickerState.Closed) {
+                    closeMediaPicker()
+                    return
+                }
+                returnToChatList()
+                return
+            }
+            is MainScreenState.Search -> {
+                returnFromSearch()
+                return
+            }
+            is MainScreenState.Settings -> {
+                returnFromSettings()
+                return
+            }
+            else -> super.onBackPressed()
         }
-        super.onBackPressed()
     }
 
     private fun startRestoreFlow() {
@@ -341,11 +379,373 @@ class MainActivity : Activity() {
         loadChatList(showLoading = true, isRefresh = false)
     }
 
+    private fun openGlobalSearch(query: String = searchDraft) {
+        val session = currentSession ?: return
+        val currentState = screenState as? MainScreenState.ChatList
+        if (currentState != null) {
+            lastChatListState = currentState.copy(searchDraft = searchDraft)
+        }
+
+        globalSearchDraft = query.trim()
+        val initialState = if (globalSearchDraft.isBlank()) {
+            MainScreenState.Search(
+                session = session,
+                queryDraft = globalSearchDraft,
+                statusMessage = "请输入关键词后再搜索全部消息。",
+                contentState = SearchContentState.Idle,
+            )
+        } else {
+            MainScreenState.Search(
+                session = session,
+                queryDraft = globalSearchDraft,
+                statusMessage = "正在搜索 \"$globalSearchDraft\"...",
+                contentState = SearchContentState.Loading,
+            )
+        }
+        render(initialState)
+
+        if (globalSearchDraft.isNotBlank()) {
+            loadGlobalSearch(showLoading = false)
+        }
+    }
+
+    private fun submitGlobalSearch() {
+        val session = currentSession ?: return
+        val normalizedQuery = globalSearchDraft.trim()
+        if (normalizedQuery.isBlank()) {
+            render(
+                MainScreenState.Search(
+                    session = session,
+                    queryDraft = "",
+                    statusMessage = "请输入关键词开始全局搜索。",
+                    contentState = SearchContentState.Idle,
+                ),
+            )
+            return
+        }
+
+        globalSearchDraft = normalizedQuery
+        render(
+            MainScreenState.Search(
+                session = session,
+                queryDraft = globalSearchDraft,
+                statusMessage = "正在搜索 \"$globalSearchDraft\"...",
+                contentState = SearchContentState.Loading,
+            ),
+        )
+        loadGlobalSearch(showLoading = false)
+    }
+
+    private fun clearGlobalSearch() {
+        val session = currentSession ?: return
+        globalSearchDraft = ""
+        render(
+            MainScreenState.Search(
+                session = session,
+                queryDraft = "",
+                statusMessage = "已清除搜索关键词。",
+                contentState = SearchContentState.Idle,
+            ),
+        )
+    }
+
+    private fun loadGlobalSearch(showLoading: Boolean) {
+        val session = currentSession ?: return
+        val currentState = screenState as? MainScreenState.Search
+
+        if (showLoading) {
+            render(
+                MainScreenState.Search(
+                    session = session,
+                    queryDraft = globalSearchDraft,
+                    statusMessage = "正在搜索 \"$globalSearchDraft\"...",
+                    contentState = SearchContentState.Loading,
+                ),
+            )
+        } else if (currentState != null) {
+            render(
+                currentState.copy(
+                    queryDraft = globalSearchDraft,
+                    statusMessage = "正在搜索 \"$globalSearchDraft\"...",
+                    contentState = SearchContentState.Loading,
+                ),
+            )
+        }
+
+        handler.removeCallbacksAndMessages(null)
+        handler.postDelayed(
+            {
+                val result = SearchChatsAndMessagesUseCase(chatRepository).execute(globalSearchDraft)
+                renderSearchResult(result)
+            },
+            CHAT_LIST_DELAY_MS,
+        )
+    }
+
+    private fun renderSearchResult(result: SearchLoadResult) {
+        val session = currentSession ?: return
+        val contentState = when (result) {
+            is SearchLoadResult.Success -> SearchContentState.Ready(
+                chatResults = result.chatResults,
+                messageResults = result.messageResults,
+            )
+            SearchLoadResult.Empty -> SearchContentState.Empty(
+                title = "未找到匹配的结果",
+                body = "试试更短的关键词，或改搜会话名与消息里的核心词。",
+            )
+            is SearchLoadResult.Failed -> SearchContentState.Error(result.message)
+        }
+        val statusMessage = when (result) {
+            is SearchLoadResult.Success -> {
+                val chatCount = result.chatResults.size
+                val messageCount = result.messageResults.size
+                "命中 $chatCount 个会话，$messageCount 条消息。"
+            }
+            SearchLoadResult.Empty -> "没有找到与 \"$globalSearchDraft\" 相关的结果。"
+            is SearchLoadResult.Failed -> result.message
+        }
+
+        render(
+            MainScreenState.Search(
+                session = session,
+                queryDraft = globalSearchDraft,
+                statusMessage = statusMessage,
+                contentState = contentState,
+            ),
+        )
+    }
+
+    private fun returnFromSearch() {
+        val fallbackState = lastChatListState
+        if (fallbackState != null) {
+            searchDraft = fallbackState.searchDraft
+            chatListStatusMessage = fallbackState.statusMessage
+            render(fallbackState)
+            return
+        }
+        globalSearchDraft = ""
+        loadChatList(showLoading = true, isRefresh = false)
+    }
+
+    private fun openSettings(showLoading: Boolean = true) {
+        val session = currentSession ?: return
+        val currentState = screenState
+        if (currentState is MainScreenState.ChatList || currentState is MainScreenState.Search) {
+            lastSettingsEntryState = currentState
+        }
+
+        if (showLoading) {
+            render(
+                MainScreenState.Settings(
+                    session = session,
+                    statusMessage = "正在加载设置...",
+                    contentState = SettingsContentState.Loading,
+                ),
+            )
+        }
+
+        handler.removeCallbacksAndMessages(null)
+        handler.postDelayed(
+            {
+                val result = LoadSettingsUseCase(settingsRepository).execute(session)
+                renderSettingsResult(result)
+            },
+            SETTINGS_DELAY_MS,
+        )
+    }
+
+    private fun renderSettingsResult(
+        result: SettingsLoadResult,
+        statusMessage: String? = null,
+    ) {
+        val session = currentSession ?: return
+        val contentState = when (result) {
+            is SettingsLoadResult.Success -> SettingsContentState.Ready(result.snapshot)
+            is SettingsLoadResult.Failed -> SettingsContentState.Error(result.message)
+        }
+        render(
+            MainScreenState.Settings(
+                session = session,
+                statusMessage = statusMessage ?: when (result) {
+                    is SettingsLoadResult.Success -> "设置已加载。"
+                    is SettingsLoadResult.Failed -> result.message
+                },
+                contentState = contentState,
+            ),
+        )
+    }
+
+    private fun togglePreference(key: PreferenceKey) {
+        val currentState = screenState as? MainScreenState.Settings ?: return
+        val snapshot = (currentState.contentState as? SettingsContentState.Ready)?.snapshot ?: return
+        val currentPreference = snapshot.preferences.firstOrNull { it.key == key } ?: return
+
+        val result = TogglePreferenceUseCase(settingsRepository).execute(
+            session = currentState.session,
+            key = key,
+            currentValue = currentPreference.isEnabled,
+        )
+        when (result) {
+            is UpdatePreferenceResult.Success -> {
+                render(
+                    currentState.copy(
+                        statusMessage = "${result.updatedPreference.title} 已${if (result.updatedPreference.isEnabled) "开启" else "关闭"}。",
+                        contentState = SettingsContentState.Ready(result.snapshot),
+                    ),
+                )
+            }
+            is UpdatePreferenceResult.Failed -> {
+                render(
+                    currentState.copy(
+                        statusMessage = result.message,
+                        contentState = result.snapshot?.let(SettingsContentState::Ready)
+                            ?: currentState.contentState,
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun returnFromSettings() {
+        when (val fallback = lastSettingsEntryState) {
+            is MainScreenState.Search -> render(fallback)
+            is MainScreenState.ChatList -> render(
+                fallback.copy(
+                    statusMessage = "已返回聊天主壳。",
+                ),
+            )
+            else -> {
+                chatListStatusMessage = "已返回会话列表。"
+                loadChatList(showLoading = true, isRefresh = false)
+            }
+        }
+    }
+
+    private fun openMediaPicker() {
+        val currentState = screenState as? MainScreenState.ChatDetail ?: return
+        render(
+            currentState.copy(
+                statusMessage = "正在加载图片素材...",
+                mediaPickerState = MediaPickerState.Loading,
+            ),
+        )
+
+        handler.removeCallbacksAndMessages(null)
+        handler.postDelayed(
+            {
+                val result = LoadAvailableMediaUseCase(chatRepository).execute()
+                renderMediaPickerResult(result)
+            },
+            MEDIA_PICKER_DELAY_MS,
+        )
+    }
+
+    private fun renderMediaPickerResult(result: MediaPickerLoadResult) {
+        val currentState = screenState as? MainScreenState.ChatDetail ?: return
+        when (result) {
+            is MediaPickerLoadResult.Success -> {
+                render(
+                    currentState.copy(
+                        statusMessage = "请选择一张图片发送。",
+                        mediaPickerState = MediaPickerState.Ready(result.attachments),
+                    ),
+                )
+            }
+            is MediaPickerLoadResult.Failed -> {
+                render(
+                    currentState.copy(
+                        statusMessage = result.message,
+                        mediaPickerState = MediaPickerState.Error(result.message),
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun closeMediaPicker() {
+        val currentState = screenState as? MainScreenState.ChatDetail ?: return
+        render(
+            currentState.copy(
+                statusMessage = "已关闭图片选择器。",
+                mediaPickerState = MediaPickerState.Closed,
+            ),
+        )
+    }
+
+    private fun sendMedia(mediaId: String) {
+        val currentState = screenState as? MainScreenState.ChatDetail ?: return
+        render(
+            currentState.copy(
+                statusMessage = "正在发送图片...",
+                mediaPickerState = MediaPickerState.Closed,
+            ),
+        )
+
+        handler.removeCallbacksAndMessages(null)
+        handler.postDelayed(
+            {
+                when (
+                    val result = SendChatMediaUseCase(chatRepository).execute(
+                        chatId = currentState.chatId,
+                        mediaId = mediaId,
+                    )
+                ) {
+                    is SendMediaResult.Success -> {
+                        chatListStatusMessage = "会话 ${result.thread.chat.title} 已发送新图片。"
+                        renderChatDetailResult(
+                            chatId = currentState.chatId,
+                            chatTitle = currentState.chatTitle,
+                            result = ChatDetailLoadResult.Success(result.thread),
+                            statusMessage = "图片已发送。",
+                            highlightedMessageId = currentState.highlightedMessageId,
+                            returnToSearch = currentState.returnToSearch,
+                        )
+                    }
+                    is SendMediaResult.Failed -> {
+                        render(
+                            currentState.copy(
+                                statusMessage = result.message,
+                                contentState = result.thread?.let(ChatDetailContentState::Ready)
+                                    ?: currentState.contentState,
+                                mediaPickerState = MediaPickerState.Closed,
+                            ),
+                        )
+                        if (result.thread != null) {
+                            persistChatDetailSnapshot(chatId = currentState.chatId)
+                        }
+                    }
+                }
+            },
+            MESSAGE_SEND_DELAY_MS,
+        )
+    }
+
+    private fun openChatFromSearchResult(chat: ChatSummary) {
+        val searchState = screenState as? MainScreenState.Search ?: return
+        openChat(
+            chat = chat,
+            returnToSearch = searchState.toReturnState(),
+        )
+    }
+
+    private fun openMessageSearchResult(hit: MessageSearchHit) {
+        val searchState = screenState as? MainScreenState.Search ?: return
+        openChat(
+            chat = hit.chat,
+            highlightedMessageId = hit.message.id,
+            returnToSearch = searchState.toReturnState(),
+        )
+    }
+
     private fun refreshChats() {
         loadChatList(showLoading = false, isRefresh = true)
     }
 
-    private fun openChat(chat: ChatSummary) {
+    private fun openChat(
+        chat: ChatSummary,
+        highlightedMessageId: String? = null,
+        returnToSearch: SearchReturnState? = null,
+    ) {
         val session = currentSession ?: return
         chatComposerDraft = ""
         render(
@@ -354,10 +754,16 @@ class MainActivity : Activity() {
                 chatId = chat.id,
                 chatTitle = chat.title,
                 chatSubtitle = chat.statusLabel,
-                statusMessage = "正在打开 ${chat.title}...",
+                statusMessage = if (highlightedMessageId == null) {
+                    "正在打开 ${chat.title}..."
+                } else {
+                    "正在定位 ${chat.title} 中的命中消息..."
+                },
                 contentState = ChatDetailContentState.Loading,
                 composerDraft = chatComposerDraft,
                 nextSendWillFail = chatRepository.nextSendWillFail(),
+                highlightedMessageId = highlightedMessageId,
+                returnToSearch = returnToSearch,
             ),
         )
 
@@ -370,9 +776,17 @@ class MainActivity : Activity() {
                     chatTitle = chat.title,
                     result = result,
                     statusMessage = when (result) {
-                        is ChatDetailLoadResult.Success -> "已进入 ${result.thread.chat.title}。"
+                        is ChatDetailLoadResult.Success -> when {
+                            highlightedMessageId != null -> {
+                                "已定位到包含 \"${returnToSearch?.queryDraft.orEmpty()}\" 的消息。"
+                            }
+                            returnToSearch != null -> "已从搜索结果打开 ${result.thread.chat.title}。"
+                            else -> "已进入 ${result.thread.chat.title}。"
+                        }
                         is ChatDetailLoadResult.Failed -> result.message
                     },
+                    highlightedMessageId = highlightedMessageId,
+                    returnToSearch = returnToSearch,
                 )
             },
             CHAT_DETAIL_DELAY_MS,
@@ -386,6 +800,8 @@ class MainActivity : Activity() {
         statusMessage: String?,
         pendingOutgoingText: String? = null,
         retryingMessageId: String? = null,
+        highlightedMessageId: String? = null,
+        returnToSearch: SearchReturnState? = null,
     ) {
         val session = currentSession ?: return
         val contentState = when (result) {
@@ -411,6 +827,8 @@ class MainActivity : Activity() {
                 pendingOutgoingText = pendingOutgoingText,
                 retryingMessageId = retryingMessageId,
                 nextSendWillFail = chatRepository.nextSendWillFail(),
+                highlightedMessageId = highlightedMessageId,
+                returnToSearch = returnToSearch,
             ),
         )
 
@@ -468,6 +886,8 @@ class MainActivity : Activity() {
                             chatTitle = currentState.chatTitle,
                             result = ChatDetailLoadResult.Success(result.thread),
                             statusMessage = "消息已发送。",
+                            highlightedMessageId = currentState.highlightedMessageId,
+                            returnToSearch = currentState.returnToSearch,
                         )
                     }
                     is SendMessageResult.InvalidInput -> {
@@ -529,6 +949,8 @@ class MainActivity : Activity() {
                             chatTitle = currentState.chatTitle,
                             result = ChatDetailLoadResult.Success(result.thread),
                             statusMessage = "消息已重试发送。",
+                            highlightedMessageId = currentState.highlightedMessageId,
+                            returnToSearch = currentState.returnToSearch,
                         )
                     }
                     is RetryMessageResult.Failed -> {
@@ -571,7 +993,32 @@ class MainActivity : Activity() {
     }
 
     private fun returnToChatList() {
+        val currentState = screenState as? MainScreenState.ChatDetail ?: return
         chatComposerDraft = ""
+        currentState.returnToSearch?.let { returnState ->
+            globalSearchDraft = returnState.queryDraft
+            render(
+                MainScreenState.Search(
+                    session = currentState.session,
+                    queryDraft = returnState.queryDraft,
+                    statusMessage = "已返回搜索结果。",
+                    contentState = returnState.contentState,
+                ),
+            )
+            return
+        }
+
+        lastChatListState?.let { listState ->
+            searchDraft = listState.searchDraft
+            chatListStatusMessage = "已返回会话列表。"
+            render(
+                listState.copy(
+                    statusMessage = chatListStatusMessage,
+                ),
+            )
+            return
+        }
+
         chatListStatusMessage = chatListStatusMessage ?: "已返回会话列表。"
         loadChatList(showLoading = true, isRefresh = false)
     }
@@ -595,6 +1042,7 @@ class MainActivity : Activity() {
             chatRepository.setChatListScenario(next)
         }
         searchDraft = ""
+        globalSearchDraft = ""
         chatListStatusMessage = when (next) {
             ChatListScenario.DEFAULT -> "已恢复默认 fixture 数据。"
             ChatListScenario.EMPTY -> "已切换到空态 fixture。"
@@ -629,8 +1077,11 @@ class MainActivity : Activity() {
         latestRestoreMessage = null
         currentSession = null
         searchDraft = ""
+        globalSearchDraft = ""
         chatComposerDraft = ""
         chatListStatusMessage = null
+        lastChatListState = null
+        lastSettingsEntryState = null
         chatRepository.restoreDefaultFixtures()
         render(MainScreenState.Login(formMessage = "已退出登录。"))
     }
@@ -644,10 +1095,22 @@ class MainActivity : Activity() {
 
     private fun render(state: MainScreenState) {
         screenState = state
+        when (state) {
+            is MainScreenState.ChatList -> {
+                lastChatListState = state
+                searchDraft = state.searchDraft
+            }
+            is MainScreenState.Search -> {
+                globalSearchDraft = state.queryDraft
+            }
+            else -> Unit
+        }
         val content = when (state) {
             MainScreenState.Restoring -> buildRestoringScreen()
             is MainScreenState.Login -> buildLoginScreen(state)
             is MainScreenState.ChatList -> buildChatListScreen(state)
+            is MainScreenState.Search -> buildSearchScreen(state)
+            is MainScreenState.Settings -> buildSettingsScreen(state)
             is MainScreenState.ChatDetail -> buildChatDetailScreen(state)
         }
         setContentView(content)
@@ -771,6 +1234,10 @@ class MainActivity : Activity() {
         root.addView(topBar())
         root.addView(space(8))
         root.addView(searchBar(state))
+        if (state.searchDraft.isNotBlank()) {
+            root.addView(space(8))
+            root.addView(globalSearchEntryRow(state.searchDraft))
+        }
         state.statusMessage?.let {
             root.addView(space(8))
             root.addView(infoBanner(it))
@@ -841,7 +1308,189 @@ class MainActivity : Activity() {
         root.addView(space(8))
         root.addView(debugSection())
         root.addView(space(8))
-        root.addView(bottomNavigation())
+        root.addView(bottomNavigation(selectedTab = RootTab.CHATS))
+
+        return root
+    }
+
+    private fun buildSearchScreen(state: MainScreenState.Search): View {
+        val root = screenRoot(
+            horizontalPaddingDp = 16,
+            topPaddingDp = 10,
+            bottomPaddingDp = 12,
+        )
+
+        root.addView(searchTopBar())
+        root.addView(space(8))
+        root.addView(globalSearchBar(state))
+        state.statusMessage?.let {
+            root.addView(space(8))
+            root.addView(infoBanner(it))
+        }
+        root.addView(space(8))
+        root.addView(thinDivider())
+        root.addView(space(4))
+
+        val listContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(2), 0, dp(10))
+        }
+
+        when (val content = state.contentState) {
+            SearchContentState.Idle -> {
+                listContent.addView(
+                    emptyStateCard(
+                        title = "搜索全部消息",
+                        body = "输入关键词后，可同时查看会话命中和消息命中结果。",
+                        primaryText = "返回列表",
+                        onPrimaryClick = { returnFromSearch() },
+                    ),
+                )
+            }
+            SearchContentState.Loading -> {
+                repeat(4) { index ->
+                    listContent.addView(chatSkeletonRow())
+                    if (index < 3) {
+                        listContent.addView(thinDivider())
+                    }
+                }
+            }
+            is SearchContentState.Ready -> {
+                if (content.chatResults.isNotEmpty()) {
+                    listContent.addView(searchSectionLabel("Chats"))
+                    listContent.addView(space(6))
+                    content.chatResults.forEachIndexed { index, chat ->
+                        listContent.addView(
+                            chatListRow(chat = chat) {
+                                openChatFromSearchResult(chat)
+                            },
+                        )
+                        if (index < content.chatResults.lastIndex || content.messageResults.isNotEmpty()) {
+                            listContent.addView(thinDivider())
+                        }
+                    }
+                }
+
+                if (content.messageResults.isNotEmpty()) {
+                    if (content.chatResults.isNotEmpty()) {
+                        listContent.addView(space(10))
+                    }
+                    listContent.addView(searchSectionLabel("Messages"))
+                    listContent.addView(space(6))
+                    content.messageResults.forEachIndexed { index, hit ->
+                        listContent.addView(messageSearchResultRow(hit))
+                        if (index < content.messageResults.lastIndex) {
+                            listContent.addView(thinDivider())
+                        }
+                    }
+                }
+            }
+            is SearchContentState.Empty -> {
+                listContent.addView(
+                    emptyStateCard(
+                        title = content.title,
+                        body = content.body,
+                        primaryText = "清除关键词",
+                        onPrimaryClick = { clearGlobalSearch() },
+                    ),
+                )
+            }
+            is SearchContentState.Error -> {
+                listContent.addView(
+                    errorStateCard(content.message) {
+                        loadGlobalSearch(showLoading = true)
+                    },
+                )
+            }
+        }
+
+        root.addView(
+            wrapInScroll(listContent).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    0,
+                    1f,
+                )
+            },
+        )
+        root.addView(space(8))
+        root.addView(bottomNavigation(selectedTab = RootTab.CHATS))
+
+        return root
+    }
+
+    private fun buildSettingsScreen(state: MainScreenState.Settings): View {
+        val root = screenRoot(
+            horizontalPaddingDp = 16,
+            topPaddingDp = 10,
+            bottomPaddingDp = 12,
+        )
+
+        root.addView(settingsTopBar())
+        state.statusMessage?.let {
+            root.addView(space(8))
+            root.addView(infoBanner(it))
+        }
+        root.addView(space(8))
+        root.addView(thinDivider())
+        root.addView(space(4))
+
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(8), 0, dp(12))
+        }
+
+        when (val settings = state.contentState) {
+            SettingsContentState.Loading -> {
+                content.addView(settingsSkeletonCard())
+                content.addView(space(14))
+                repeat(3) { index ->
+                    content.addView(settingsSkeletonRow())
+                    if (index < 2) {
+                        content.addView(space(8))
+                    }
+                }
+            }
+            is SettingsContentState.Ready -> {
+                content.addView(profileHero(settings.snapshot))
+                content.addView(space(14))
+                content.addView(settingsSectionLabel("Account"))
+                content.addView(space(8))
+                content.addView(accountSummaryCard(settings.snapshot))
+                content.addView(space(14))
+                content.addView(settingsSectionLabel("Preferences"))
+                content.addView(space(8))
+                settings.snapshot.preferences.forEachIndexed { index, preference ->
+                    content.addView(preferenceRow(preference))
+                    if (index < settings.snapshot.preferences.lastIndex) {
+                        content.addView(space(8))
+                    }
+                }
+                content.addView(space(14))
+                content.addView(settingsSectionLabel("Session"))
+                content.addView(space(8))
+                content.addView(sessionActionCard())
+            }
+            is SettingsContentState.Error -> {
+                content.addView(
+                    settingsErrorStateCard(settings.message) {
+                        openSettings(showLoading = true)
+                    },
+                )
+            }
+        }
+
+        root.addView(
+            wrapInScroll(content).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    0,
+                    1f,
+                )
+            },
+        )
+        root.addView(space(8))
+        root.addView(bottomNavigation(selectedTab = RootTab.SETTINGS))
 
         return root
     }
@@ -889,6 +1538,10 @@ class MainActivity : Activity() {
                 root.addView(composerSection(state, enabled = false))
             }
             is ChatDetailContentState.Ready -> {
+                content.thread.messages.find { it.id == state.highlightedMessageId }?.let { highlighted ->
+                    root.addView(searchHitPreviewCard(highlighted))
+                    root.addView(space(8))
+                }
                 root.addView(
                     wrapInScroll(
                         content = messageThreadView(content.thread, state),
@@ -902,6 +1555,10 @@ class MainActivity : Activity() {
                     },
                 )
                 root.addView(space(8))
+                if (state.mediaPickerState != MediaPickerState.Closed) {
+                    root.addView(mediaPickerSheet(state.mediaPickerState))
+                    root.addView(space(8))
+                }
                 root.addView(
                     composerSection(
                         state = state,
@@ -957,6 +1614,68 @@ class MainActivity : Activity() {
                     openComposePlaceholder()
                 }.apply {
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                },
+            )
+        }
+    }
+
+    private fun searchTopBar(): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+
+            addView(topTextButton("返回") { returnFromSearch() })
+            addView(spaceWidth(8))
+            addView(
+                titleView("Search", sizeSp = 22f).apply {
+                    gravity = Gravity.CENTER
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                },
+            )
+            addView(spaceWidth(8))
+            addView(
+                TextView(context).apply {
+                    text = "S5"
+                    textSize = 11f
+                    setTypeface(Typeface.DEFAULT_BOLD)
+                    setTextColor(Color.parseColor("#6C7884"))
+                    background = roundedBackground(
+                        fillColor = Color.parseColor("#E8EEF5"),
+                        strokeColor = Color.TRANSPARENT,
+                        radiusDp = 12,
+                    )
+                    setPadding(dp(10), dp(6), dp(10), dp(6))
+                },
+            )
+        }
+    }
+
+    private fun settingsTopBar(): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+
+            addView(topTextButton("返回") { returnFromSettings() })
+            addView(spaceWidth(8))
+            addView(
+                titleView("Settings", sizeSp = 22f).apply {
+                    gravity = Gravity.CENTER
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                },
+            )
+            addView(spaceWidth(8))
+            addView(
+                TextView(context).apply {
+                    text = "S6"
+                    textSize = 11f
+                    setTypeface(Typeface.DEFAULT_BOLD)
+                    setTextColor(Color.parseColor("#6C7884"))
+                    background = roundedBackground(
+                        fillColor = Color.parseColor("#E8EEF5"),
+                        strokeColor = Color.TRANSPARENT,
+                        radiusDp = 12,
+                    )
+                    setPadding(dp(10), dp(6), dp(10), dp(6))
                 },
             )
         }
@@ -1068,14 +1787,111 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun chatListRow(chat: ChatSummary): LinearLayout {
+    private fun globalSearchBar(state: MainScreenState.Search): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = roundedBackground(
+                fillColor = Color.parseColor("#F1F3F6"),
+                strokeColor = Color.TRANSPARENT,
+                radiusDp = 18,
+            )
+            setPadding(dp(14), dp(6), dp(14), dp(6))
+
+            addView(
+                TextView(context).apply {
+                    text = "搜索"
+                    textSize = 13f
+                    setTextColor(Color.parseColor("#8A95A1"))
+                },
+            )
+            addView(spaceWidth(10))
+            addView(
+                EditText(context).apply {
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                    setText(state.queryDraft)
+                    hint = "会话或消息"
+                    inputType = InputType.TYPE_CLASS_TEXT
+                    background = null
+                    maxLines = 1
+                    setTextColor(Color.parseColor("#25303A"))
+                    setHintTextColor(Color.parseColor("#A3ADB8"))
+                    addTextChangedListener(
+                        object : TextWatcher {
+                            override fun beforeTextChanged(
+                                s: CharSequence?,
+                                start: Int,
+                                count: Int,
+                                after: Int,
+                            ) = Unit
+
+                            override fun onTextChanged(
+                                s: CharSequence?,
+                                start: Int,
+                                before: Int,
+                                count: Int,
+                            ) = Unit
+
+                            override fun afterTextChanged(s: Editable?) {
+                                globalSearchDraft = s?.toString().orEmpty()
+                            }
+                        },
+                    )
+                },
+            )
+            addView(spaceWidth(6))
+            addView(
+                topTextButton("搜索") {
+                    submitGlobalSearch()
+                },
+            )
+            if (state.queryDraft.isNotBlank()) {
+                addView(spaceWidth(4))
+                addView(
+                    topTextButton("清除") {
+                        clearGlobalSearch()
+                    },
+                )
+            }
+        }
+    }
+
+    private fun globalSearchEntryRow(query: String): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = roundedBackground(
+                fillColor = Color.parseColor("#F7FAFD"),
+                strokeColor = Color.parseColor("#E2E9F1"),
+                radiusDp = 18,
+            )
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+
+            addView(
+                secondaryView("已过滤当前列表，也可搜索全部消息。").apply {
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                },
+            )
+            addView(spaceWidth(10))
+            addView(
+                compactChipButton("全局搜索", active = false) {
+                    openGlobalSearch(query)
+                },
+            )
+        }
+    }
+
+    private fun chatListRow(
+        chat: ChatSummary,
+        onClick: () -> Unit = { openChat(chat) },
+    ): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.TOP
             minimumHeight = dp(72)
             setPadding(dp(2), dp(10), dp(2), dp(10))
             setOnClickListener {
-                openChat(chat)
+                onClick()
             }
 
             addView(avatarView(chat))
@@ -1135,6 +1951,112 @@ class MainActivity : Activity() {
                             }
                         },
                     )
+                },
+            )
+        }
+    }
+
+    private fun searchSectionLabel(text: String): TextView {
+        return TextView(this).apply {
+            this.text = text
+            textSize = 13f
+            setTypeface(Typeface.DEFAULT_BOLD)
+            setTextColor(Color.parseColor("#637280"))
+            setPadding(dp(4), dp(6), dp(4), dp(2))
+        }
+    }
+
+    private fun messageSearchResultRow(hit: MessageSearchHit): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.TOP
+            minimumHeight = dp(72)
+            setPadding(dp(2), dp(10), dp(2), dp(10))
+            setOnClickListener {
+                openMessageSearchResult(hit)
+            }
+
+            addView(avatarView(hit.chat))
+            addView(spaceWidth(12))
+            addView(
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+
+                    addView(
+                        LinearLayout(context).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = Gravity.CENTER_VERTICAL
+                            addView(
+                                TextView(context).apply {
+                                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                                    text = hit.chat.title
+                                    textSize = 16f
+                                    maxLines = 1
+                                    ellipsize = TextUtils.TruncateAt.END
+                                    setTypeface(Typeface.DEFAULT_BOLD)
+                                    setTextColor(Color.parseColor("#1F2730"))
+                                },
+                            )
+                            addView(spaceWidth(8))
+                            addView(
+                                TextView(context).apply {
+                                    text = hit.message.sentAtLabel
+                                    textSize = 12f
+                                    setTextColor(Color.parseColor("#7F8A96"))
+                                },
+                            )
+                        },
+                    )
+                    addView(space(4))
+                    addView(
+                        TextView(context).apply {
+                            text = messagePreviewText(hit.message)
+                            textSize = 14f
+                            maxLines = 2
+                            ellipsize = TextUtils.TruncateAt.END
+                            setTextColor(Color.parseColor("#566572"))
+                        },
+                    )
+                    addView(space(4))
+                    addView(
+                        secondaryView("消息结果 · 点按后定位到该消息")
+                    )
+                },
+            )
+        }
+    }
+
+    private fun searchHitPreviewCard(message: Message): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBackground(
+                fillColor = Color.parseColor("#FFF7D8"),
+                strokeColor = Color.parseColor("#E1C766"),
+                radiusDp = 18,
+            )
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+
+            addView(
+                TextView(context).apply {
+                    text = "命中消息预览"
+                    textSize = 12f
+                    setTypeface(Typeface.DEFAULT_BOLD)
+                    setTextColor(Color.parseColor("#8C6A12"))
+                },
+            )
+            addView(space(6))
+            addView(
+                TextView(context).apply {
+                    text = messagePreviewText(message)
+                    textSize = 14f
+                    setTextColor(Color.parseColor("#3B3320"))
+                },
+            )
+            addView(space(6))
+            addView(
+                secondaryView("${message.sentAtLabel} · 已从搜索结果定位").apply {
+                    setTextColor(Color.parseColor("#8A6E29"))
                 },
             )
         }
@@ -1200,6 +2122,7 @@ class MainActivity : Activity() {
                             message.deliveryState
                         },
                         actionLabel = if (state.retryingMessageId == message.id) "重试中" else null,
+                        isHighlighted = state.highlightedMessageId == message.id,
                     ),
                 )
                 if (index < thread.messages.lastIndex || state.pendingOutgoingText != null) {
@@ -1220,6 +2143,7 @@ class MainActivity : Activity() {
                         ),
                         visualState = DeliveryState.SENDING,
                         actionLabel = "发送中",
+                        isHighlighted = false,
                     ),
                 )
             }
@@ -1230,6 +2154,7 @@ class MainActivity : Activity() {
         message: Message,
         visualState: DeliveryState,
         actionLabel: String? = null,
+        isHighlighted: Boolean = false,
     ): LinearLayout {
         val isOutgoing = message.isOutgoing
         val isFailed = visualState == DeliveryState.FAILED
@@ -1248,11 +2173,14 @@ class MainActivity : Activity() {
                     orientation = LinearLayout.VERTICAL
                     background = roundedBackground(
                         fillColor = when {
+                            isHighlighted && isOutgoing -> Color.parseColor("#DFF8D6")
+                            isHighlighted -> Color.parseColor("#FFF7D8")
                             isFailed -> Color.parseColor("#FDECEC")
                             isOutgoing -> Color.parseColor("#D9FDD2")
                             else -> Color.WHITE
                         },
                         strokeColor = when {
+                            isHighlighted -> Color.parseColor("#E1C766")
                             isFailed -> Color.parseColor("#F1D0D0")
                             isOutgoing -> Color.TRANSPARENT
                             else -> Color.parseColor("#D6E0EA")
@@ -1261,14 +2189,33 @@ class MainActivity : Activity() {
                     )
                     setPadding(dp(14), dp(10), dp(14), dp(10))
 
-                    addView(
-                        TextView(context).apply {
-                            text = message.text
-                            textSize = 15f
-                            maxWidth = maxBubbleWidthPx()
-                            setTextColor(Color.parseColor("#1B1F23"))
-                        },
-                    )
+                    if (isHighlighted) {
+                        addView(
+                            TextView(context).apply {
+                                text = "命中消息"
+                                textSize = 11f
+                                setTypeface(Typeface.DEFAULT_BOLD)
+                                setTextColor(Color.parseColor("#8C6A12"))
+                            },
+                        )
+                        addView(space(6))
+                    }
+                    message.mediaAttachment?.let { attachment ->
+                        addView(mediaBubbleCard(attachment, message.isOutgoing))
+                        if (message.text.isNotBlank()) {
+                            addView(space(8))
+                        }
+                    }
+                    if (message.text.isNotBlank()) {
+                        addView(
+                            TextView(context).apply {
+                                text = message.text
+                                textSize = 15f
+                                maxWidth = maxBubbleWidthPx()
+                                setTextColor(Color.parseColor("#1B1F23"))
+                            },
+                        )
+                    }
                     addView(space(8))
                     addView(
                         TextView(context).apply {
@@ -1324,6 +2271,16 @@ class MainActivity : Activity() {
         return "${message.sentAtLabel} · $statusLabel"
     }
 
+    private fun messagePreviewText(message: Message): String {
+        val attachment = message.mediaAttachment
+        return if (attachment == null) {
+            message.text
+        } else {
+            val caption = message.text.ifBlank { attachment.title }
+            "Photo · $caption"
+        }
+    }
+
     private fun messageSkeletonRow(outgoing: Boolean): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1364,16 +2321,19 @@ class MainActivity : Activity() {
             setPadding(dp(8), dp(8), dp(8), dp(8))
 
             addView(
-                TextView(context).apply {
-                    text = "+"
-                    textSize = 18f
-                    gravity = Gravity.CENTER
-                    layoutParams = LinearLayout.LayoutParams(dp(36), dp(36))
-                    setTextColor(Color.parseColor("#7C8A96"))
-                    background = roundedBackground(
-                        fillColor = Color.parseColor("#F1F4F7"),
-                        strokeColor = Color.TRANSPARENT,
-                        radiusDp = 18,
+                compactChipButton(
+                    label = "Media",
+                    active = state.mediaPickerState != MediaPickerState.Closed,
+                ) {
+                    if (state.mediaPickerState == MediaPickerState.Closed) {
+                        openMediaPicker()
+                    } else {
+                        closeMediaPicker()
+                    }
+                }.apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
                     )
                 },
             )
@@ -1426,6 +2386,140 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun mediaPickerSheet(state: MediaPickerState): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBackground(
+                fillColor = Color.parseColor("#FFFFFF"),
+                strokeColor = Color.parseColor("#D7E0E8"),
+                radiusDp = 22,
+            )
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+
+            addView(
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(
+                        titleView("Media Picker", sizeSp = 18f).apply {
+                            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                        },
+                    )
+                    addView(
+                        topTextButton("关闭") {
+                            closeMediaPicker()
+                        },
+                    )
+                },
+            )
+            addView(space(6))
+            addView(secondaryView("选择一张 fixture 图片，直接发送到当前会话。"))
+            addView(space(12))
+
+            when (state) {
+                MediaPickerState.Loading -> {
+                    repeat(3) { index ->
+                        addView(settingsSkeletonRow())
+                        if (index < 2) {
+                            addView(space(8))
+                        }
+                    }
+                }
+                is MediaPickerState.Ready -> {
+                    state.attachments.forEachIndexed { index, attachment ->
+                        addView(mediaPickerRow(attachment))
+                        if (index < state.attachments.lastIndex) {
+                            addView(space(8))
+                        }
+                    }
+                }
+                is MediaPickerState.Error -> {
+                    addView(secondaryView(state.message))
+                    addView(space(12))
+                    addView(
+                        primaryButton("重试加载") {
+                            openMediaPicker()
+                        },
+                    )
+                }
+                MediaPickerState.Closed -> Unit
+            }
+        }
+    }
+
+    private fun mediaPickerRow(attachment: MediaAttachment): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = roundedBackground(
+                fillColor = Color.parseColor("#F8FAFC"),
+                strokeColor = Color.parseColor("#E2E9F1"),
+                radiusDp = 18,
+            )
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            setOnClickListener { sendMedia(attachment.id) }
+
+            addView(mediaBubbleCard(attachment, outgoing = false))
+            addView(spaceWidth(12))
+            addView(
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                    addView(
+                        TextView(context).apply {
+                            text = attachment.title
+                            textSize = 15f
+                            setTypeface(Typeface.DEFAULT_BOLD)
+                            setTextColor(Color.parseColor("#1F2730"))
+                        },
+                    )
+                    addView(space(4))
+                    addView(secondaryView(attachment.defaultCaption))
+                },
+            )
+        }
+    }
+
+    private fun mediaBubbleCard(
+        attachment: MediaAttachment,
+        outgoing: Boolean,
+    ): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(dp(172), ViewGroup.LayoutParams.WRAP_CONTENT)
+            background = roundedBackground(
+                fillColor = Color.parseColor(attachment.accentColorHex),
+                strokeColor = Color.TRANSPARENT,
+                radiusDp = 16,
+            )
+            setPadding(dp(12), dp(36), dp(12), dp(12))
+
+            addView(
+                TextView(context).apply {
+                    text = if (outgoing) "已发送图片" else "收到图片"
+                    textSize = 11f
+                    setTypeface(Typeface.DEFAULT_BOLD)
+                    setTextColor(Color.parseColor("#36556E"))
+                    background = roundedBackground(
+                        fillColor = Color.parseColor("#F4FAFF"),
+                        strokeColor = Color.TRANSPARENT,
+                        radiusDp = 12,
+                    )
+                    setPadding(dp(8), dp(5), dp(8), dp(5))
+                },
+            )
+            addView(space(12))
+            addView(
+                TextView(context).apply {
+                    text = attachment.title
+                    textSize = 16f
+                    setTypeface(Typeface.DEFAULT_BOLD)
+                    setTextColor(Color.parseColor("#1F2730"))
+                },
+            )
+        }
+    }
+
     private fun detailDebugSection(state: MainScreenState.ChatDetail): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -1470,6 +2564,222 @@ class MainActivity : Activity() {
                     clearLocalSnapshot()
                 },
             )
+        }
+    }
+
+    private fun settingsSectionLabel(text: String): TextView {
+        return TextView(this).apply {
+            this.text = text
+            textSize = 13f
+            setTypeface(Typeface.DEFAULT_BOLD)
+            setTextColor(Color.parseColor("#637280"))
+            setPadding(dp(4), dp(4), dp(4), dp(2))
+        }
+    }
+
+    private fun profileHero(snapshot: com.telegram.compare.kmp.shareddomain.SettingsSnapshot): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = roundedBackground(
+                fillColor = Color.parseColor("#FFFFFF"),
+                strokeColor = Color.parseColor("#E3EAF1"),
+                radiusDp = 24,
+            )
+            setPadding(dp(18), dp(18), dp(18), dp(18))
+
+            addView(
+                TextView(context).apply {
+                    text = snapshot.profile.displayName.take(2).uppercase()
+                    textSize = 20f
+                    gravity = Gravity.CENTER
+                    setTypeface(Typeface.DEFAULT_BOLD)
+                    setTextColor(Color.parseColor("#1F5F8B"))
+                    layoutParams = LinearLayout.LayoutParams(dp(64), dp(64))
+                    background = roundedBackground(
+                        fillColor = Color.parseColor("#EAF3FB"),
+                        strokeColor = Color.TRANSPARENT,
+                        radiusDp = 32,
+                    )
+                },
+            )
+            addView(spaceWidth(14))
+            addView(
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                    addView(titleView(snapshot.profile.displayName, sizeSp = 22f))
+                    addView(space(4))
+                    addView(secondaryView(snapshot.profile.phoneNumber))
+                    addView(space(6))
+                    addView(
+                        TextView(context).apply {
+                            text = "@${snapshot.profile.username}"
+                            textSize = 13f
+                            setTextColor(Color.parseColor("#2481CC"))
+                            background = roundedBackground(
+                                fillColor = Color.parseColor("#EEF7FF"),
+                                strokeColor = Color.TRANSPARENT,
+                                radiusDp = 14,
+                            )
+                            setPadding(dp(10), dp(6), dp(10), dp(6))
+                        },
+                    )
+                    addView(space(8))
+                    addView(secondaryView(snapshot.profile.about))
+                },
+            )
+        }
+    }
+
+    private fun accountSummaryCard(snapshot: com.telegram.compare.kmp.shareddomain.SettingsSnapshot): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBackground(
+                fillColor = Color.parseColor("#FFFFFF"),
+                strokeColor = Color.parseColor("#E3EAF1"),
+                radiusDp = 20,
+            )
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+
+            addView(secondaryView("Display name").apply { setTypeface(Typeface.DEFAULT_BOLD) })
+            addView(space(4))
+            addView(bodyView(snapshot.profile.displayName).apply { gravity = Gravity.START })
+            addView(space(10))
+            addView(secondaryView("Phone"))
+            addView(space(2))
+            addView(bodyView(snapshot.profile.phoneNumber).apply { gravity = Gravity.START })
+            addView(space(10))
+            addView(secondaryView("About"))
+            addView(space(2))
+            addView(secondaryView(snapshot.profile.about))
+        }
+    }
+
+    private fun preferenceRow(preference: com.telegram.compare.kmp.shareddomain.UserPreference): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = roundedBackground(
+                fillColor = Color.parseColor("#FFFFFF"),
+                strokeColor = Color.parseColor("#E3EAF1"),
+                radiusDp = 20,
+            )
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            setOnClickListener { togglePreference(preference.key) }
+
+            addView(
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                    addView(
+                        TextView(context).apply {
+                            text = preference.title
+                            textSize = 15f
+                            setTypeface(Typeface.DEFAULT_BOLD)
+                            setTextColor(Color.parseColor("#1F2730"))
+                        },
+                    )
+                    addView(space(4))
+                    addView(secondaryView(preference.description))
+                },
+            )
+            addView(spaceWidth(12))
+            addView(
+                compactChipButton(
+                    label = if (preference.isEnabled) "On" else "Off",
+                    active = preference.isEnabled,
+                ) {
+                    togglePreference(preference.key)
+                },
+            )
+        }
+    }
+
+    private fun sessionActionCard(): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBackground(
+                fillColor = Color.parseColor("#FFF7F6"),
+                strokeColor = Color.parseColor("#F2DEDA"),
+                radiusDp = 20,
+            )
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+
+            addView(
+                TextView(context).apply {
+                    text = "退出登录会清空当前会话和聊天缓存，但保留本地偏好设置。"
+                    textSize = 14f
+                    setTextColor(Color.parseColor("#7A4C51"))
+                },
+            )
+            addView(space(14))
+            addView(
+                primaryButton("退出登录") {
+                    logout()
+                },
+            )
+        }
+    }
+
+    private fun settingsSkeletonCard(): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = roundedBackground(
+                fillColor = Color.parseColor("#FFFFFF"),
+                strokeColor = Color.parseColor("#E3EAF1"),
+                radiusDp = 24,
+            )
+            setPadding(dp(18), dp(18), dp(18), dp(18))
+
+            addView(
+                View(context).apply {
+                    layoutParams = LinearLayout.LayoutParams(dp(64), dp(64))
+                    background = roundedBackground(
+                        fillColor = Color.parseColor("#EEF1F4"),
+                        strokeColor = Color.TRANSPARENT,
+                        radiusDp = 32,
+                    )
+                },
+            )
+            addView(spaceWidth(14))
+            addView(
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                    addView(skeletonBar(widthDp = 160, heightDp = 16))
+                    addView(space(8))
+                    addView(skeletonBar(widthDp = 132, heightDp = 12))
+                    addView(space(8))
+                    addView(skeletonBar(widthDp = 96, heightDp = 12))
+                },
+            )
+        }
+    }
+
+    private fun settingsSkeletonRow(): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = roundedBackground(
+                fillColor = Color.parseColor("#FFFFFF"),
+                strokeColor = Color.parseColor("#E3EAF1"),
+                radiusDp = 20,
+            )
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+
+            addView(
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                    addView(skeletonBar(widthDp = 148, heightDp = 14))
+                    addView(space(8))
+                    addView(skeletonBar(widthDp = 220, heightDp = 12))
+                },
+            )
+            addView(spaceWidth(12))
+            addView(skeletonBar(widthDp = 56, heightDp = 28))
         }
     }
 
@@ -1544,6 +2854,8 @@ class MainActivity : Activity() {
                             lastMessageAtLabel = "",
                             avatarLabel = "TG",
                         ),
+                        highlightedMessageId = (screenState as? MainScreenState.ChatDetail)?.highlightedMessageId,
+                        returnToSearch = (screenState as? MainScreenState.ChatDetail)?.returnToSearch,
                     )
                 },
             )
@@ -1553,6 +2865,26 @@ class MainActivity : Activity() {
                     returnToChatList()
                 },
             )
+        }
+    }
+
+    private fun settingsErrorStateCard(
+        message: String,
+        onRetry: () -> Unit,
+    ): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundedBackground(
+                fillColor = Color.parseColor("#FFF6F5"),
+                strokeColor = Color.parseColor("#F4D7D4"),
+            )
+            setPadding(dp(20), dp(22), dp(20), dp(22))
+
+            addView(titleView("设置加载失败", sizeSp = 20f))
+            addView(space(8))
+            addView(secondaryView(message))
+            addView(space(18))
+            addView(primaryButton("重试加载") { onRetry() })
         }
     }
 
@@ -1639,7 +2971,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun bottomNavigation(): LinearLayout {
+    private fun bottomNavigation(selectedTab: RootTab): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
@@ -1650,15 +2982,28 @@ class MainActivity : Activity() {
             )
             setPadding(dp(8), dp(8), dp(8), dp(8))
 
-            addView(bottomTab("Chats", selected = true))
-            addView(bottomTab("Calls", selected = false))
-            addView(bottomTab("Settings", selected = false))
+            addView(
+                bottomTab("Chats", selected = selectedTab == RootTab.CHATS) {
+                    openChatsRoot()
+                },
+            )
+            addView(
+                bottomTab("Calls", selected = false) {
+                    openCallsPlaceholder()
+                },
+            )
+            addView(
+                bottomTab("Settings", selected = selectedTab == RootTab.SETTINGS) {
+                    openSettings(showLoading = selectedTab != RootTab.SETTINGS)
+                },
+            )
         }
     }
 
     private fun bottomTab(
         text: String,
         selected: Boolean,
+        onClick: () -> Unit,
     ): TextView {
         return TextView(this).apply {
             this.text = text
@@ -1678,6 +3023,21 @@ class MainActivity : Activity() {
                 strokeColor = Color.TRANSPARENT,
                 radiusDp = 20,
             )
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun openChatsRoot() {
+        chatListStatusMessage = "已返回会话列表。"
+        loadChatList(showLoading = true, isRefresh = false)
+    }
+
+    private fun openCallsPlaceholder() {
+        when (val currentState = screenState) {
+            is MainScreenState.ChatList -> render(currentState.copy(statusMessage = "Calls tab 仍在 backlog。"))
+            is MainScreenState.Search -> render(currentState.copy(statusMessage = "Calls tab 仍在 backlog。"))
+            is MainScreenState.Settings -> render(currentState.copy(statusMessage = "Calls tab 仍在 backlog。"))
+            else -> Unit
         }
     }
 
@@ -2082,6 +3442,19 @@ class MainActivity : Activity() {
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).roundToInt()
 
+    private fun MainScreenState.Search.toReturnState(): SearchReturnState {
+        return SearchReturnState(
+            queryDraft = queryDraft,
+            statusMessage = statusMessage,
+            contentState = contentState,
+        )
+    }
+
+    private enum class RootTab {
+        CHATS,
+        SETTINGS,
+    }
+
     private companion object {
         const val PREFS_NAME = "telegram_compare_session"
         const val RESTORE_DELAY_MS = 650L
@@ -2089,6 +3462,8 @@ class MainActivity : Activity() {
         const val CHAT_LIST_DELAY_MS = 320L
         const val REFRESH_DELAY_MS = 520L
         const val CHAT_DETAIL_DELAY_MS = 260L
+        const val SETTINGS_DELAY_MS = 220L
+        const val MEDIA_PICKER_DELAY_MS = 180L
         const val MESSAGE_SEND_DELAY_MS = 520L
         const val MESSAGE_RETRY_DELAY_MS = 420L
     }
