@@ -36,8 +36,10 @@
 ```bash
 ./scripts/check-dev-env.sh
 ./scripts/verify-layout.sh
+bash ./.agents/setup/check-codex-ai-infra.sh
 bash ./scripts/kmp-doctor.sh
 bash ./.agents/setup/bootstrap-codex-mcp.sh
+bash ./.agents/setup/bootstrap-figma-mcp.sh remote
 bash ./.agents/setup/install-curated-skills.sh
 bash ./.agents/setup/check-android-env.sh
 ```
@@ -45,6 +47,8 @@ bash ./.agents/setup/check-android-env.sh
 说明:
 
 - 上面两个 setup 脚本默认是 dry-run。
+- `bootstrap-figma-mcp.sh remote` 会为 Codex 准备 Figma remote MCP；首次真实接入需要 `--apply` 并完成 Figma OAuth。
+- `check-codex-ai-infra.sh` 会同时检查 repo-local 控制面、必需 MCP 和推荐全局 skills。
 - 需要真实写入 `~/.codex/` 时，请追加 `--apply`。
 - 当前本机工具链检查结果见 `.agents/todos/ai-gap-list.md` 和 `./scripts/check-dev-env.sh`。
 - KMP 轨道的 repo-level 自检入口是 `bash ./scripts/kmp-doctor.sh`。
@@ -70,3 +74,9 @@ bash ./.agents/setup/check-android-env.sh
 2. 在 `framework-agnostic-assets/design-evidence/` 保存设计评审证据、截图和 handoff 记录。
 3. 在 `.agents/skills/telegram-compare-ui-design/` 里约束 Agent 先做 UI 设计，再做实现。
 4. 如果使用 Figma，则通过 `.agents/mcp/figma.mcp.toml.example` 和推荐的 Figma skills 接入设计上下文。
+
+没有 Figma 设计稿时也可以推进:
+
+1. 先在 `framework-agnostic-spec/interface-design/` 写 screen inventory、状态矩阵和低保真结构。
+2. 在 `framework-agnostic-assets/design-evidence/` 留截图、草图或 ready-for-dev 清单。
+3. 当页面结构稳定后，再在 Figma 补视觉稿和原型，并通过 Figma MCP 把 frame / node 链接带给 Agent。

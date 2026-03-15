@@ -24,11 +24,22 @@
 | S7 | 媒体消息 | P2 | 支持图片消息的展示与发送 |
 | S8 | AI 助手增强能力 | P2 | 至少有一个 AI 场景用于展示“AI 生成商用品”的潜力 |
 
+## 已细化切片
+
+- `S1 登录与会话恢复`: 详见 `framework-agnostic-spec/requirements/s1-login-session-restore.md`
+- `S2 会话列表`: 详见 `framework-agnostic-spec/requirements/s2-chat-list.md`
+- `S3 单聊详情与文本发送`: 详见 `framework-agnostic-spec/requirements/s3-chat-detail-and-send.md`
+- `S4 本地缓存与离线恢复`: 详见 `framework-agnostic-spec/requirements/s4-local-cache-and-offline-restore.md`
+- `S5 搜索会话 / 消息`: 详见 `framework-agnostic-spec/requirements/s5-search-chats-and-messages.md`
+- `S6 设置与个人资料`: 详见 `framework-agnostic-spec/requirements/s6-settings-and-profile.md`
+- `S7 媒体消息`: 详见 `framework-agnostic-spec/requirements/s7-media-messages.md`
+
 ## 非功能要求
 
 | 类型 | 要求 |
 |---|---|
 | 体验 | 首屏主路径流畅，交互反馈明确 |
+| 视觉一致性 | UI 风格应尽量贴近现有 Telegram 客户端，尤其是会话列表、聊天详情、搜索和底部导航的视觉层级与密度 |
 | 可维护性 | 结构清晰，能支撑双框架长期对比 |
 | 可测试性 | 核心状态、网络和存储可以隔离验证 |
 | 可追踪性 | 每个切片都有对比证据和 AI 交付记录 |
@@ -40,4 +51,3 @@
 - 端到端加密完整实现
 - 复杂贴纸 / 表情生态
 - 完整推送链路
-

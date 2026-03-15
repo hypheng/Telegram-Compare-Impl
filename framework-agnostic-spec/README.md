@@ -7,12 +7,14 @@
 ## 顺序
 
 1. `requirements/telegram-mvp.md`
-2. `ux/core-flows.md`
-3. `interface-design/`
-4. `domain/domain-map.md`
-5. `comparison/evaluation-rubric.md`
-6. `comparison/ai-delivery-observability.md`
-7. `comparison/debugging-and-issue-workflow.md`
+2. `requirements/s1-login-session-restore.md`
+3. `ux/core-flows.md`
+4. `interface-design/`
+5. `domain/domain-map.md`
+6. `comparison/development-roadmap.md`
+7. `comparison/evaluation-rubric.md`
+8. `comparison/ai-delivery-observability.md`
+9. `comparison/debugging-and-issue-workflow.md`
 
 ## 基本原则
 

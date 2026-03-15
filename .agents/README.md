@@ -43,7 +43,16 @@
 - KMP 交付技能
 - CJMP 交付技能
 - UI / interaction 设计技能
+- Codex AI infra 自检入口
 - Android 环境检查脚本
 - KMP / CJMP 环境检查脚本
 
 这意味着 Agent 在开始真实实现前，能先判断“是需求没定义清楚，还是工具链根本没装好”。
+
+## 常用入口
+
+- `bash ./.agents/setup/check-codex-ai-infra.sh`
+- `bash ./.agents/setup/bootstrap-codex-mcp.sh`
+- `bash ./.agents/setup/install-curated-skills.sh`
+- `bash ./.agents/setup/check-kmp-env.sh`
+- `bash ./.agents/setup/check-cjmp-env.sh`

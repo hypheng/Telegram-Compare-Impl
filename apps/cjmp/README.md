@@ -33,10 +33,11 @@ apps/cjmp/
 - `cjfmt`、`cjlint`、`cjdb` 也纳入了环境检查
 - CJMP 文档入口已切到 Context7 `/hypheng/cjmp-ai-docs`
 - 仓库级最小可运行工程仍未初始化，因此当前还是“有工具链、没项目模板”的状态
+- `S1` 已有 repo-local 切片计划: `apps/cjmp/docs/s1-login-session-restore-plan.md`
 
 ## 下一步
 
-1. 先从 `/hypheng/cjmp-ai-docs` 确认当前切片对应的文档入口
-2. 基于 `cjpm init` / `cjpm.toml` 初始化最小工程
-3. 确认目标平台环境与 target
-4. 以 S1/S2/S3 初始化最小可运行工程
+1. 按 `apps/cjmp/docs/s1-login-session-restore-plan.md` 初始化 `S1` 的最小 `cjpm` 工程
+2. 先让 `cjpm init` / `cjpm build -V` / `cjpm run` 在 repo 内打通
+3. 确认 Android-first 的平台壳承载方式，再决定是否引入 `keels`
+4. 在 `S1` 三态打通后，再推进 `S2/S3`

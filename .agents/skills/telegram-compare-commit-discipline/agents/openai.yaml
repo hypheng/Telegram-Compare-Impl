@@ -1,0 +1,7 @@
+interface:
+  display_name: "TG Commit Discipline"
+  short_description: "Write detailed, professional commits"
+  default_prompt: "Use $telegram-compare-commit-discipline when preparing a commit or writing a commit message for this Telegram comparison project."
+
+policy:
+  allow_implicit_invocation: true

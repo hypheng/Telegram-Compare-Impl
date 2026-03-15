@@ -39,11 +39,25 @@
 4. 双框架至少都有实现计划，或已明确阻塞项。
 5. AI 交付观察已沉淀到对比矩阵或 TODO。
 
+## Commit Discipline
+
+- 每个 commit 都必须是单一主题、可解释、可追溯的专业提交。
+- commit title 需要直接说明主题，避免空泛措辞。
+- commit body 默认应详细说明:
+  - 做了什么
+  - 为什么做
+  - 影响了哪些层
+  - 实际验证了什么
+  - 还有什么未完成或存在风险
+- 涉及切片时，正文优先写清 slice ID、spec/design/handoff/evidence 的对应关系。
+- 如果用户要求提交代码，优先使用 `$telegram-compare-commit-discipline`。
+
 ## Preferred Skills
 
 - 做框架无关设计时，使用 `$telegram-compare-product-design`
 - 做 UI / interaction 设计时，使用 `$telegram-compare-ui-design`
 - 做双实现对齐时，使用 `$telegram-compare-parity-delivery`
 - 做 MCP、提示词、技能、环境脚本时，使用 `$telegram-compare-ai-infra`
+- 做 commit 准备、拆分和 message 编写时，使用 `$telegram-compare-commit-discipline`
 - 做 KMP / Android 实现时，使用 `$telegram-compare-kmp-delivery`
 - 做 CJMP 实现时，使用 `$telegram-compare-cjmp-delivery`
