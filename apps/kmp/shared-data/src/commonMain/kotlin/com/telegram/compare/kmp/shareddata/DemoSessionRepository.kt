@@ -8,6 +8,10 @@ import com.telegram.compare.kmp.shareddomain.UserSession
 class DemoSessionRepository(
     private val storage: SessionStorage,
 ) : SessionRepository {
+    /*
+     * Demo-only auth repository for the current comparison shell.
+     * Follow-up: wire a release-safe session/auth implementation before any non-demo distribution path.
+     */
     override fun restoreSession(): SessionRestoreResult {
         val persistedSession = storage.read() ?: return SessionRestoreResult.NoSession
 

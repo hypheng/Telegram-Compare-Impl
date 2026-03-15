@@ -1,6 +1,7 @@
 package com.telegram.compare.kmp.android
 
 import android.app.Activity
+import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -16,6 +17,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
@@ -69,14 +71,15 @@ import kotlin.math.roundToInt
 
 class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
+    private var pendingWork: Runnable? = null
 
     private lateinit var chatRepository: InMemoryChatRepository
     private lateinit var sessionRepository: DemoSessionRepository
     private lateinit var settingsRepository: LocalSettingsRepository
 
     private var screenState: MainScreenState = MainScreenState.Restoring
-    private var phoneDraft = "+86 138 0000 0000"
-    private var codeDraft = DemoSessionRepository.DEMO_VERIFICATION_CODE
+    private var phoneDraft = ""
+    private var codeDraft = ""
     private var latestRestoreMessage: String? = null
     private var currentSession: UserSession? = null
     private var chatListStatusMessage: String? = null
@@ -88,6 +91,11 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
+            phoneDraft = "+86 138 0000 0000"
+            codeDraft = DemoSessionRepository.DEMO_VERIFICATION_CODE
+        }
 
         val sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
 
@@ -112,7 +120,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
-        handler.removeCallbacksAndMessages(null)
+        cancelPendingWork()
         super.onDestroy()
     }
 
@@ -140,11 +148,10 @@ class MainActivity : Activity() {
     }
 
     private fun startRestoreFlow() {
-        handler.removeCallbacksAndMessages(null)
+        cancelPendingWork()
         render(MainScreenState.Restoring)
 
-        handler.postDelayed(
-            {
+        postPendingWork(RESTORE_DELAY_MS) {
                 when (val result = RestoreSessionUseCase(sessionRepository).execute()) {
                     is SessionRestoreResult.Restored -> {
                         latestRestoreMessage = null
@@ -170,9 +177,7 @@ class MainActivity : Activity() {
                         )
                     }
                 }
-            },
-            RESTORE_DELAY_MS,
-        )
+        }
     }
 
     private fun restoreCachedContextOrLoadDefault() {
@@ -232,9 +237,7 @@ class MainActivity : Activity() {
             ),
         )
 
-        handler.removeCallbacksAndMessages(null)
-        handler.postDelayed(
-            {
+        postPendingWork(LOGIN_DELAY_MS) {
                 when (
                     val result = LoginWithCodeUseCase(sessionRepository).execute(
                         phoneNumber = phoneDraft,
@@ -267,9 +270,7 @@ class MainActivity : Activity() {
                         )
                     }
                 }
-            },
-            LOGIN_DELAY_MS,
-        )
+        }
     }
 
     private fun loadChatList(
@@ -297,9 +298,7 @@ class MainActivity : Activity() {
             )
         }
 
-        handler.removeCallbacksAndMessages(null)
-        handler.postDelayed(
-            {
+        postPendingWork(if (isRefresh) REFRESH_DELAY_MS else CHAT_LIST_DELAY_MS) {
                 val result = if (isRefresh) {
                     RefreshChatListUseCase(chatRepository).execute(searchDraft)
                 } else {
@@ -315,9 +314,7 @@ class MainActivity : Activity() {
                 }
 
                 renderChatListResult(result)
-            },
-            if (isRefresh) REFRESH_DELAY_MS else CHAT_LIST_DELAY_MS,
-        )
+        }
     }
 
     private fun renderChatListResult(result: ChatListLoadResult) {
@@ -472,14 +469,10 @@ class MainActivity : Activity() {
             )
         }
 
-        handler.removeCallbacksAndMessages(null)
-        handler.postDelayed(
-            {
+        postPendingWork(CHAT_LIST_DELAY_MS) {
                 val result = SearchChatsAndMessagesUseCase(chatRepository).execute(globalSearchDraft)
                 renderSearchResult(result)
-            },
-            CHAT_LIST_DELAY_MS,
-        )
+        }
     }
 
     private fun renderSearchResult(result: SearchLoadResult) {
@@ -544,14 +537,10 @@ class MainActivity : Activity() {
             )
         }
 
-        handler.removeCallbacksAndMessages(null)
-        handler.postDelayed(
-            {
+        postPendingWork(SETTINGS_DELAY_MS) {
                 val result = LoadSettingsUseCase(settingsRepository).execute(session)
                 renderSettingsResult(result)
-            },
-            SETTINGS_DELAY_MS,
-        )
+        }
     }
 
     private fun renderSettingsResult(
@@ -630,14 +619,10 @@ class MainActivity : Activity() {
             ),
         )
 
-        handler.removeCallbacksAndMessages(null)
-        handler.postDelayed(
-            {
+        postPendingWork(MEDIA_PICKER_DELAY_MS) {
                 val result = LoadAvailableMediaUseCase(chatRepository).execute()
                 renderMediaPickerResult(result)
-            },
-            MEDIA_PICKER_DELAY_MS,
-        )
+        }
     }
 
     private fun renderMediaPickerResult(result: MediaPickerLoadResult) {
@@ -681,9 +666,7 @@ class MainActivity : Activity() {
             ),
         )
 
-        handler.removeCallbacksAndMessages(null)
-        handler.postDelayed(
-            {
+        postPendingWork(MESSAGE_SEND_DELAY_MS) {
                 when (
                     val result = SendChatMediaUseCase(chatRepository).execute(
                         chatId = currentState.chatId,
@@ -713,11 +696,9 @@ class MainActivity : Activity() {
                         if (result.thread != null) {
                             persistChatDetailSnapshot(chatId = currentState.chatId)
                         }
+                        }
                     }
-                }
-            },
-            MESSAGE_SEND_DELAY_MS,
-        )
+        }
     }
 
     private fun openChatFromSearchResult(chat: ChatSummary) {
@@ -767,9 +748,7 @@ class MainActivity : Activity() {
             ),
         )
 
-        handler.removeCallbacksAndMessages(null)
-        handler.postDelayed(
-            {
+        postPendingWork(CHAT_DETAIL_DELAY_MS) {
                 val result = LoadChatDetailUseCase(chatRepository).execute(chat.id)
                 renderChatDetailResult(
                     chatId = chat.id,
@@ -788,9 +767,7 @@ class MainActivity : Activity() {
                     highlightedMessageId = highlightedMessageId,
                     returnToSearch = returnToSearch,
                 )
-            },
-            CHAT_DETAIL_DELAY_MS,
-        )
+        }
     }
 
     private fun renderChatDetailResult(
@@ -870,9 +847,7 @@ class MainActivity : Activity() {
             ),
         )
 
-        handler.removeCallbacksAndMessages(null)
-        handler.postDelayed(
-            {
+        postPendingWork(MESSAGE_SEND_DELAY_MS) {
                 when (
                     val result = SendChatMessageUseCase(chatRepository).execute(
                         chatId = currentState.chatId,
@@ -916,11 +891,9 @@ class MainActivity : Activity() {
                         if (result.thread != null) {
                             persistChatDetailSnapshot(chatId = currentState.chatId)
                         }
+                        }
                     }
-                }
-            },
-            MESSAGE_SEND_DELAY_MS,
-        )
+        }
     }
 
     private fun retryFailedMessage(messageId: String) {
@@ -933,9 +906,7 @@ class MainActivity : Activity() {
             ),
         )
 
-        handler.removeCallbacksAndMessages(null)
-        handler.postDelayed(
-            {
+        postPendingWork(MESSAGE_RETRY_DELAY_MS) {
                 when (
                     val result = RetryChatMessageUseCase(chatRepository).execute(
                         chatId = currentState.chatId,
@@ -968,11 +939,9 @@ class MainActivity : Activity() {
                         if (result.thread != null) {
                             persistChatDetailSnapshot(chatId = currentState.chatId)
                         }
+                        }
                     }
-                }
-            },
-            MESSAGE_RETRY_DELAY_MS,
-        )
+        }
     }
 
     private fun toggleNextSendFailure() {
@@ -1071,7 +1040,7 @@ class MainActivity : Activity() {
     }
 
     private fun logout() {
-        handler.removeCallbacksAndMessages(null)
+        cancelPendingWork()
         ClearSyncSnapshotUseCase(chatRepository).execute()
         LogoutUseCase(sessionRepository).execute()
         latestRestoreMessage = null
@@ -1497,79 +1466,132 @@ class MainActivity : Activity() {
 
     private fun buildChatDetailScreen(state: MainScreenState.ChatDetail): View {
         val root = screenRoot(
-            horizontalPaddingDp = 12,
-            topPaddingDp = 10,
-            bottomPaddingDp = 12,
+            horizontalPaddingDp = 0,
+            topPaddingDp = 6,
+            bottomPaddingDp = 8,
             backgroundColor = Color.parseColor("#DCE8F4"),
         )
 
-        root.addView(chatDetailTopBar(state))
+        root.addView(
+            chatDetailTopBar(state).apply {
+                setPadding(dp(12), dp(4), dp(12), dp(6))
+            },
+        )
         state.statusMessage?.let {
-            root.addView(space(8))
-            root.addView(infoBanner(it))
+            root.addView(
+                centeredStatusPill(it).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ).apply {
+                        setMargins(dp(12), 0, dp(12), dp(8))
+                    }
+                },
+            )
         }
-        root.addView(space(8))
+
+        val viewport = FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f,
+            )
+        }
 
         when (val content = state.contentState) {
             ChatDetailContentState.Loading -> {
                 val loadingPanel = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
-                    setPadding(dp(4), dp(6), dp(4), dp(12))
+                    setPadding(dp(2), dp(10), dp(2), dp(16))
                     repeat(6) { index ->
                         addView(messageSkeletonRow(outgoing = index % 2 == 1))
                         if (index < 5) {
-                            addView(space(8))
+                            addView(space(10))
                         }
                     }
                 }
-                root.addView(
+
+                viewport.addView(
                     wrapInScroll(
                         content = loadingPanel,
                         backgroundColor = Color.TRANSPARENT,
                     ).apply {
-                        layoutParams = LinearLayout.LayoutParams(
+                        layoutParams = FrameLayout.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
-                            0,
-                            1f,
+                            ViewGroup.LayoutParams.MATCH_PARENT,
                         )
+                        setPadding(dp(12), 0, dp(12), 0)
+                        clipToPadding = false
                     },
                 )
-                root.addView(space(8))
-                root.addView(composerSection(state, enabled = false))
+                root.addView(viewport)
+                root.addView(
+                    composerSection(state, enabled = false).apply {
+                        layoutParams = LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ).apply {
+                            setMargins(dp(12), 0, dp(12), 0)
+                        }
+                    },
+                )
             }
             is ChatDetailContentState.Ready -> {
-                content.thread.messages.find { it.id == state.highlightedMessageId }?.let { highlighted ->
-                    root.addView(searchHitPreviewCard(highlighted))
-                    root.addView(space(8))
-                }
-                root.addView(
+                viewport.addView(
                     wrapInScroll(
                         content = messageThreadView(content.thread, state),
                         backgroundColor = Color.TRANSPARENT,
                     ).apply {
-                        layoutParams = LinearLayout.LayoutParams(
+                        layoutParams = FrameLayout.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
-                            0,
-                            1f,
+                            ViewGroup.LayoutParams.MATCH_PARENT,
                         )
+                        setPadding(dp(12), 0, dp(12), 0)
+                        clipToPadding = false
                     },
                 )
-                root.addView(space(8))
                 if (state.mediaPickerState != MediaPickerState.Closed) {
-                    root.addView(mediaPickerSheet(state.mediaPickerState))
-                    root.addView(space(8))
+                    viewport.addView(
+                        mediaPickerSheet(state.mediaPickerState).apply {
+                            layoutParams = FrameLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.WRAP_CONTENT,
+                                Gravity.BOTTOM,
+                            ).apply {
+                                setMargins(dp(12), dp(12), dp(12), dp(8))
+                            }
+                        },
+                    )
                 }
+                root.addView(viewport)
                 root.addView(
                     composerSection(
                         state = state,
                         enabled = state.pendingOutgoingText == null && state.retryingMessageId == null,
-                    ),
+                    ).apply {
+                        layoutParams = LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ).apply {
+                            setMargins(dp(12), 0, dp(12), 0)
+                        }
+                    },
                 )
-                root.addView(space(8))
-                root.addView(detailDebugSection(state))
+                if (state.mediaPickerState == MediaPickerState.Closed) {
+                    root.addView(
+                        detailDebugSection(state).apply {
+                            layoutParams = LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.WRAP_CONTENT,
+                            ).apply {
+                                setMargins(dp(12), dp(6), dp(12), 0)
+                            }
+                        },
+                    )
+                }
             }
             is ChatDetailContentState.Error -> {
-                root.addView(
+                viewport.addView(
                     wrapInScroll(
                         content = LinearLayout(this).apply {
                             orientation = LinearLayout.VERTICAL
@@ -1578,13 +1600,15 @@ class MainActivity : Activity() {
                         },
                         backgroundColor = Color.TRANSPARENT,
                     ).apply {
-                        layoutParams = LinearLayout.LayoutParams(
+                        layoutParams = FrameLayout.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
-                            0,
-                            1f,
+                            ViewGroup.LayoutParams.MATCH_PARENT,
                         )
+                        setPadding(dp(12), 0, dp(12), 0)
+                        clipToPadding = false
                     },
                 )
+                root.addView(viewport)
             }
         }
 
@@ -1682,43 +1706,51 @@ class MainActivity : Activity() {
     }
 
     private fun chatDetailTopBar(state: MainScreenState.ChatDetail): LinearLayout {
+        val chat = when (val content = state.contentState) {
+            is ChatDetailContentState.Ready -> content.thread.chat
+            else -> ChatSummary(
+                id = state.chatId,
+                title = state.chatTitle,
+                lastMessagePreview = "",
+                unreadCount = 0,
+                lastMessageAtLabel = "",
+                avatarLabel = detailAvatarLabel(state.chatTitle),
+                statusLabel = state.chatSubtitle,
+            )
+        }
+
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
 
-            addView(topTextButton("返回") { returnToChatList() })
-            addView(spaceWidth(8))
+            addView(topIconButton("<") { returnToChatList() })
+            addView(spaceWidth(6))
+            addView(avatarView(chat, sizeDp = 40, textSizeSp = 13f))
+            addView(spaceWidth(10))
             addView(
                 LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                     addView(
-                        titleView(state.chatTitle, sizeSp = 20f).apply {
-                            gravity = Gravity.CENTER_HORIZONTAL
+                        TextView(context).apply {
+                            text = state.chatTitle
+                            textSize = 20f
+                            setTypeface(Typeface.DEFAULT_BOLD)
+                            setTextColor(Color.parseColor("#1B1F23"))
+                            maxLines = 1
+                            ellipsize = TextUtils.TruncateAt.END
                         },
                     )
                     addView(
-                        secondaryView(state.chatSubtitle.ifBlank { "Demo chat detail" }).apply {
-                            gravity = Gravity.CENTER_HORIZONTAL
+                        secondaryView(state.chatSubtitle.ifBlank { "last seen recently" }).apply {
+                            maxLines = 1
+                            ellipsize = TextUtils.TruncateAt.END
                         },
                     )
                 },
             )
             addView(spaceWidth(8))
-            addView(
-                TextView(context).apply {
-                    text = "S3"
-                    textSize = 11f
-                    setTypeface(Typeface.DEFAULT_BOLD)
-                    setTextColor(Color.parseColor("#6C7884"))
-                    background = roundedBackground(
-                        fillColor = Color.parseColor("#E8EEF5"),
-                        strokeColor = Color.TRANSPARENT,
-                        radiusDp = 12,
-                    )
-                    setPadding(dp(10), dp(6), dp(10), dp(6))
-                },
-            )
+            addView(topIconButton("...") { openChatDetailOverflowPlaceholder() })
         }
     }
 
@@ -2110,7 +2142,12 @@ class MainActivity : Activity() {
     ): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(4), dp(6), dp(4), dp(12))
+            setPadding(dp(2), dp(10), dp(2), dp(16))
+
+            thread.messages.find { it.id == state.highlightedMessageId }?.let { highlighted ->
+                addView(searchHitPreviewCard(highlighted))
+                addView(space(12))
+            }
 
             thread.messages.forEachIndexed { index, message ->
                 addView(
@@ -2126,7 +2163,7 @@ class MainActivity : Activity() {
                     ),
                 )
                 if (index < thread.messages.lastIndex || state.pendingOutgoingText != null) {
-                    addView(space(8))
+                    addView(space(10))
                 }
             }
 
@@ -2173,37 +2210,36 @@ class MainActivity : Activity() {
                     orientation = LinearLayout.VERTICAL
                     background = roundedBackground(
                         fillColor = when {
-                            isHighlighted && isOutgoing -> Color.parseColor("#DFF8D6")
-                            isHighlighted -> Color.parseColor("#FFF7D8")
+                            isHighlighted && isOutgoing -> Color.parseColor("#E4F7DA")
+                            isHighlighted -> Color.parseColor("#FFF4CC")
                             isFailed -> Color.parseColor("#FDECEC")
-                            isOutgoing -> Color.parseColor("#D9FDD2")
+                            isOutgoing -> Color.parseColor("#DCF8C6")
                             else -> Color.WHITE
                         },
                         strokeColor = when {
-                            isHighlighted -> Color.parseColor("#E1C766")
+                            isHighlighted -> Color.parseColor("#E5CC79")
                             isFailed -> Color.parseColor("#F1D0D0")
-                            isOutgoing -> Color.TRANSPARENT
-                            else -> Color.parseColor("#D6E0EA")
+                            else -> Color.TRANSPARENT
                         },
-                        radiusDp = 18,
+                        radiusDp = 20,
                     )
-                    setPadding(dp(14), dp(10), dp(14), dp(10))
+                    setPadding(dp(12), dp(8), dp(12), dp(8))
 
                     if (isHighlighted) {
                         addView(
                             TextView(context).apply {
-                                text = "命中消息"
+                                text = "Search hit"
                                 textSize = 11f
                                 setTypeface(Typeface.DEFAULT_BOLD)
                                 setTextColor(Color.parseColor("#8C6A12"))
                             },
                         )
-                        addView(space(6))
+                        addView(space(4))
                     }
                     message.mediaAttachment?.let { attachment ->
                         addView(mediaBubbleCard(attachment, message.isOutgoing))
                         if (message.text.isNotBlank()) {
-                            addView(space(8))
+                            addView(space(6))
                         }
                     }
                     if (message.text.isNotBlank()) {
@@ -2211,32 +2247,39 @@ class MainActivity : Activity() {
                             TextView(context).apply {
                                 text = message.text
                                 textSize = 15f
+                                setLineSpacing(dp(1).toFloat(), 1f)
                                 maxWidth = maxBubbleWidthPx()
                                 setTextColor(Color.parseColor("#1B1F23"))
                             },
                         )
                     }
-                    addView(space(8))
+                    addView(space(4))
                     addView(
-                        TextView(context).apply {
-                            text = buildMessageMetaText(
-                                message = message,
-                                visualState = visualState,
-                                actionLabel = actionLabel,
-                            )
-                            textSize = 11f
-                            setTextColor(
-                                when {
-                                    isFailed -> Color.parseColor("#9A4B50")
-                                    isBusy -> Color.parseColor("#477BA7")
-                                    else -> Color.parseColor("#758290")
+                        LinearLayout(context).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                            addView(
+                                TextView(context).apply {
+                                    text = buildMessageMetaText(
+                                        message = message,
+                                        visualState = visualState,
+                                        actionLabel = actionLabel,
+                                    )
+                                    textSize = 11f
+                                    setTextColor(
+                                        when {
+                                            isFailed -> Color.parseColor("#9A4B50")
+                                            isBusy -> Color.parseColor("#477BA7")
+                                            else -> Color.parseColor("#758290")
+                                        },
+                                    )
                                 },
                             )
                         },
                     )
 
                     if (isFailed) {
-                        addView(space(8))
+                        addView(space(6))
                         addView(
                             compactChipButton("重试", active = true) {
                                 retryFailedMessage(message.id)
@@ -2313,74 +2356,79 @@ class MainActivity : Activity() {
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = roundedBackground(
-                fillColor = Color.WHITE,
-                strokeColor = Color.parseColor("#D7E0E8"),
-                radiusDp = 24,
-            )
-            setPadding(dp(8), dp(8), dp(8), dp(8))
 
             addView(
-                compactChipButton(
-                    label = "Media",
-                    active = state.mediaPickerState != MediaPickerState.Closed,
+                circleActionButton(
+                    text = "+",
+                    enabled = true,
+                    filled = state.mediaPickerState != MediaPickerState.Closed,
                 ) {
                     if (state.mediaPickerState == MediaPickerState.Closed) {
                         openMediaPicker()
                     } else {
                         closeMediaPicker()
                     }
-                }.apply {
-                    layoutParams = LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                    )
                 },
             )
             addView(spaceWidth(8))
 
             addView(
-                EditText(context).apply {
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                    setText(state.composerDraft)
-                    hint = "输入消息"
-                    inputType = InputType.TYPE_CLASS_TEXT
-                    background = null
-                    maxLines = 4
-                    minLines = 1
-                    isEnabled = enabled
-                    setTextColor(Color.parseColor("#25303A"))
-                    setHintTextColor(Color.parseColor("#9AA5AF"))
-                    addTextChangedListener(
-                        object : TextWatcher {
-                            override fun beforeTextChanged(
-                                s: CharSequence?,
-                                start: Int,
-                                count: Int,
-                                after: Int,
-                            ) = Unit
+                    background = roundedBackground(
+                        fillColor = Color.WHITE,
+                        strokeColor = Color.parseColor("#D7E0E8"),
+                        radiusDp = 24,
+                    )
+                    setPadding(dp(14), dp(6), dp(6), dp(6))
 
-                            override fun onTextChanged(
-                                s: CharSequence?,
-                                start: Int,
-                                before: Int,
-                                count: Int,
-                            ) = Unit
+                    addView(
+                        EditText(context).apply {
+                            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                            setText(state.composerDraft)
+                            hint = "输入消息"
+                            inputType = InputType.TYPE_CLASS_TEXT
+                            background = null
+                            maxLines = 4
+                            minLines = 1
+                            isEnabled = enabled
+                            setTextColor(Color.parseColor("#25303A"))
+                            setHintTextColor(Color.parseColor("#9AA5AF"))
+                            addTextChangedListener(
+                                object : TextWatcher {
+                                    override fun beforeTextChanged(
+                                        s: CharSequence?,
+                                        start: Int,
+                                        count: Int,
+                                        after: Int,
+                                    ) = Unit
 
-                            override fun afterTextChanged(s: Editable?) {
-                                chatComposerDraft = s?.toString().orEmpty()
-                            }
+                                    override fun onTextChanged(
+                                        s: CharSequence?,
+                                        start: Int,
+                                        before: Int,
+                                        count: Int,
+                                    ) = Unit
+
+                                    override fun afterTextChanged(s: Editable?) {
+                                        chatComposerDraft = s?.toString().orEmpty()
+                                    }
+                                },
+                            )
                         },
                     )
-                },
-            )
-            addView(spaceWidth(8))
-            addView(
-                circleSendButton(
-                    text = if (enabled) "发送" else "...",
-                    enabled = enabled,
-                ) {
-                    submitMessage()
+                    addView(spaceWidth(6))
+                    addView(
+                        circleActionButton(
+                            text = ">",
+                            enabled = enabled,
+                            filled = true,
+                        ) {
+                            submitMessage()
+                        },
+                    )
                 },
             )
         }
@@ -2391,44 +2439,102 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             background = roundedBackground(
                 fillColor = Color.parseColor("#FFFFFF"),
-                strokeColor = Color.parseColor("#D7E0E8"),
-                radiusDp = 22,
+                strokeColor = Color.parseColor("#DDE5EC"),
+                radiusDp = 26,
             )
-            setPadding(dp(14), dp(14), dp(14), dp(14))
+            setPadding(dp(14), dp(10), dp(14), dp(14))
+
+            addView(
+                View(context).apply {
+                    layoutParams = LinearLayout.LayoutParams(dp(38), dp(4)).apply {
+                        gravity = Gravity.CENTER_HORIZONTAL
+                    }
+                    background = roundedBackground(
+                        fillColor = Color.parseColor("#D8E1E8"),
+                        strokeColor = Color.TRANSPARENT,
+                        radiusDp = 2,
+                    )
+                },
+            )
+            addView(space(10))
 
             addView(
                 LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     addView(
-                        titleView("Media Picker", sizeSp = 18f).apply {
+                        titleView("Send photo", sizeSp = 18f).apply {
                             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                         },
                     )
                     addView(
-                        topTextButton("关闭") {
+                        topIconButton("x") {
                             closeMediaPicker()
                         },
                     )
                 },
             )
             addView(space(6))
-            addView(secondaryView("选择一张 fixture 图片，直接发送到当前会话。"))
+            addView(secondaryView("从 fixture 缩略图里选一张，直接发送到当前会话。"))
             addView(space(12))
 
             when (state) {
                 MediaPickerState.Loading -> {
-                    repeat(3) { index ->
-                        addView(settingsSkeletonRow())
-                        if (index < 2) {
+                    repeat(2) { rowIndex ->
+                        addView(
+                            LinearLayout(context).apply {
+                                orientation = LinearLayout.HORIZONTAL
+                                repeat(2) { columnIndex ->
+                                    addView(
+                                        settingsSkeletonRow().apply {
+                                            layoutParams = LinearLayout.LayoutParams(
+                                                0,
+                                                ViewGroup.LayoutParams.WRAP_CONTENT,
+                                                1f,
+                                            )
+                                        },
+                                    )
+                                    if (columnIndex == 0) {
+                                        addView(spaceWidth(10))
+                                    }
+                                }
+                            },
+                        )
+                        if (rowIndex == 0) {
                             addView(space(8))
                         }
                     }
                 }
                 is MediaPickerState.Ready -> {
-                    state.attachments.forEachIndexed { index, attachment ->
-                        addView(mediaPickerRow(attachment))
-                        if (index < state.attachments.lastIndex) {
+                    val rows = state.attachments.chunked(2)
+                    rows.forEachIndexed { rowIndex, attachments ->
+                        addView(
+                            LinearLayout(context).apply {
+                                orientation = LinearLayout.HORIZONTAL
+                                attachments.forEachIndexed { columnIndex, attachment ->
+                                    addView(
+                                        mediaPickerRow(attachment).apply {
+                                            layoutParams = LinearLayout.LayoutParams(
+                                                0,
+                                                ViewGroup.LayoutParams.WRAP_CONTENT,
+                                                1f,
+                                            )
+                                        },
+                                    )
+                                    if (columnIndex < attachments.lastIndex) {
+                                        addView(spaceWidth(10))
+                                    }
+                                }
+                                if (attachments.size == 1) {
+                                    addView(
+                                        View(context).apply {
+                                            layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
+                                        },
+                                    )
+                                }
+                            },
+                        )
+                        if (rowIndex < rows.lastIndex) {
                             addView(space(8))
                         }
                     }
@@ -2449,32 +2555,43 @@ class MainActivity : Activity() {
 
     private fun mediaPickerRow(attachment: MediaAttachment): LinearLayout {
         return LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+            orientation = LinearLayout.VERTICAL
             background = roundedBackground(
                 fillColor = Color.parseColor("#F8FAFC"),
-                strokeColor = Color.parseColor("#E2E9F1"),
-                radiusDp = 18,
+                strokeColor = Color.parseColor("#E1E8EF"),
+                radiusDp = 20,
             )
-            setPadding(dp(12), dp(12), dp(12), dp(12))
+            setPadding(dp(10), dp(10), dp(10), dp(10))
             setOnClickListener { sendMedia(attachment.id) }
 
-            addView(mediaBubbleCard(attachment, outgoing = false))
-            addView(spaceWidth(12))
             addView(
-                LinearLayout(context).apply {
-                    orientation = LinearLayout.VERTICAL
-                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                    addView(
-                        TextView(context).apply {
-                            text = attachment.title
-                            textSize = 15f
-                            setTypeface(Typeface.DEFAULT_BOLD)
-                            setTextColor(Color.parseColor("#1F2730"))
-                        },
+                mediaThumbnailView(
+                    attachment = attachment,
+                    heightDp = 112,
+                    showOverlayTitle = false,
+                ).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        dp(112),
                     )
-                    addView(space(4))
-                    addView(secondaryView(attachment.defaultCaption))
+                },
+            )
+            addView(space(8))
+            addView(
+                TextView(context).apply {
+                    text = attachment.title
+                    textSize = 14f
+                    maxLines = 1
+                    ellipsize = TextUtils.TruncateAt.END
+                    setTypeface(Typeface.DEFAULT_BOLD)
+                    setTextColor(Color.parseColor("#1F2730"))
+                },
+            )
+            addView(space(2))
+            addView(
+                secondaryView(attachment.defaultCaption).apply {
+                    maxLines = 1
+                    ellipsize = TextUtils.TruncateAt.END
                 },
             )
         }
@@ -2486,35 +2603,16 @@ class MainActivity : Activity() {
     ): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(dp(172), ViewGroup.LayoutParams.WRAP_CONTENT)
-            background = roundedBackground(
-                fillColor = Color.parseColor(attachment.accentColorHex),
-                strokeColor = Color.TRANSPARENT,
-                radiusDp = 16,
-            )
-            setPadding(dp(12), dp(36), dp(12), dp(12))
-
             addView(
-                TextView(context).apply {
-                    text = if (outgoing) "已发送图片" else "收到图片"
-                    textSize = 11f
-                    setTypeface(Typeface.DEFAULT_BOLD)
-                    setTextColor(Color.parseColor("#36556E"))
-                    background = roundedBackground(
-                        fillColor = Color.parseColor("#F4FAFF"),
-                        strokeColor = Color.TRANSPARENT,
-                        radiusDp = 12,
+                mediaThumbnailView(
+                    attachment = attachment,
+                    heightDp = if (outgoing) 152 else 144,
+                    showOverlayTitle = true,
+                ).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        dp(188),
+                        dp(if (outgoing) 152 else 144),
                     )
-                    setPadding(dp(8), dp(5), dp(8), dp(5))
-                },
-            )
-            addView(space(12))
-            addView(
-                TextView(context).apply {
-                    text = attachment.title
-                    textSize = 16f
-                    setTypeface(Typeface.DEFAULT_BOLD)
-                    setTextColor(Color.parseColor("#1F2730"))
                 },
             )
         }
@@ -2525,42 +2623,30 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             background = roundedBackground(
-                fillColor = Color.parseColor("#F7FAFD"),
-                strokeColor = Color.parseColor("#E2E9F1"),
+                fillColor = Color.parseColor("#F5F8FB"),
+                strokeColor = Color.parseColor("#E4EBF2"),
                 radiusDp = 18,
             )
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setPadding(dp(10), dp(6), dp(10), dp(6))
 
             addView(
-                secondaryView("Debug").apply {
+                secondaryView("Dev").apply {
                     setTypeface(Typeface.DEFAULT_BOLD)
                     setTextColor(Color.parseColor("#55636F"))
                 },
             )
-            addView(spaceWidth(10))
+            addView(spaceWidth(8))
             addView(
                 compactChipButton(
-                    label = if (state.nextSendWillFail) "下一条将失败" else "下一条正常发送",
+                    label = if (state.nextSendWillFail) "下条失败" else "下条正常",
                     active = state.nextSendWillFail,
                 ) {
                     toggleNextSendFailure()
                 },
             )
-            addView(spaceWidth(10))
+            addView(spaceWidth(8))
             addView(
-                secondaryView(
-                    if (state.nextSendWillFail) {
-                        "用于验收 failed / retry。"
-                    } else {
-                        "用于切换下一条失败。"
-                    },
-                ).apply {
-                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                },
-            )
-            addView(spaceWidth(10))
-            addView(
-                compactChipButton("清空缓存", active = false) {
+                compactChipButton("清缓存", active = false) {
                     clearLocalSnapshot()
                 },
             )
@@ -3041,18 +3127,27 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun avatarView(chat: ChatSummary): TextView {
+    private fun openChatDetailOverflowPlaceholder() {
+        val currentState = screenState as? MainScreenState.ChatDetail ?: return
+        render(currentState.copy(statusMessage = "更多会话操作仍在 backlog。"))
+    }
+
+    private fun avatarView(
+        chat: ChatSummary,
+        sizeDp: Int = 54,
+        textSizeSp: Float = 16f,
+    ): TextView {
         return TextView(this).apply {
             text = chat.avatarLabel
-            textSize = 16f
+            textSize = textSizeSp
             gravity = Gravity.CENTER
             setTypeface(Typeface.DEFAULT_BOLD)
             setTextColor(Color.parseColor(chat.avatarTextColorHex))
-            layoutParams = LinearLayout.LayoutParams(dp(54), dp(54))
+            layoutParams = LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp))
             background = roundedBackground(
                 fillColor = Color.parseColor(chat.avatarBackgroundColorHex),
                 strokeColor = Color.TRANSPARENT,
-                radiusDp = 27,
+                radiusDp = sizeDp / 2,
             )
         }
     }
@@ -3097,6 +3192,48 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun topIconButton(
+        text: String,
+        onClick: () -> Unit,
+    ): Button {
+        return Button(this).apply {
+            this.text = text
+            textSize = 16f
+            isAllCaps = false
+            minWidth = 0
+            minimumWidth = 0
+            setTextColor(Color.parseColor("#2481CC"))
+            background = roundedBackground(
+                fillColor = Color.parseColor("#EDF4FB"),
+                strokeColor = Color.TRANSPARENT,
+                radiusDp = 16,
+            )
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun centeredStatusPill(text: String): LinearLayout {
+        return LinearLayout(this).apply {
+            gravity = Gravity.CENTER
+            addView(
+                TextView(context).apply {
+                    this.text = text
+                    textSize = 12f
+                    setTextColor(Color.parseColor("#456983"))
+                    background = roundedBackground(
+                        fillColor = Color.parseColor("#EEF5FB"),
+                        strokeColor = Color.TRANSPARENT,
+                        radiusDp = 14,
+                    )
+                    setPadding(dp(12), dp(7), dp(12), dp(7))
+                    maxLines = 2
+                    ellipsize = TextUtils.TruncateAt.END
+                },
+            )
+        }
+    }
+
     private fun compactChipButton(
         label: String,
         active: Boolean,
@@ -3116,23 +3253,129 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun circleSendButton(
+    private fun circleActionButton(
         text: String,
         enabled: Boolean,
+        filled: Boolean,
         onClick: () -> Unit,
     ): Button {
         return Button(this).apply {
             this.text = text
+            textSize = 18f
             isAllCaps = false
             isEnabled = enabled
-            setTextColor(Color.WHITE)
-            background = roundedBackground(
-                fillColor = if (enabled) Color.parseColor("#2481CC") else Color.parseColor("#A6C8E5"),
-                strokeColor = Color.TRANSPARENT,
-                radiusDp = 20,
+            minWidth = 0
+            minimumWidth = 0
+            setTextColor(
+                if (filled) {
+                    Color.WHITE
+                } else {
+                    Color.parseColor("#2481CC")
+                },
             )
-            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutParams = LinearLayout.LayoutParams(dp(42), dp(42))
+            background = roundedBackground(
+                fillColor = if (!enabled && filled) {
+                    Color.parseColor("#A6C8E5")
+                } else if (filled) {
+                    Color.parseColor("#2481CC")
+                } else {
+                    Color.WHITE
+                },
+                strokeColor = if (filled) Color.TRANSPARENT else Color.parseColor("#D7E0E8"),
+                radiusDp = 21,
+            )
+            setPadding(0, 0, 0, 0)
             setOnClickListener { onClick() }
+        }
+    }
+
+    private fun detailAvatarLabel(title: String): String {
+        val compact = title
+            .split(" ")
+            .filter { it.isNotBlank() }
+            .take(2)
+            .joinToString(separator = "") { it.take(1) }
+            .uppercase()
+        return compact.ifBlank { "TG" }
+    }
+
+    private fun mediaThumbnailView(
+        attachment: MediaAttachment,
+        heightDp: Int,
+        showOverlayTitle: Boolean,
+    ): FrameLayout {
+        return FrameLayout(this).apply {
+            background = roundedBackground(
+                fillColor = Color.parseColor(attachment.accentColorHex),
+                strokeColor = Color.TRANSPARENT,
+                radiusDp = 18,
+            )
+
+            addView(
+                TextView(context).apply {
+                    text = "PHOTO"
+                    textSize = 10f
+                    setTypeface(Typeface.DEFAULT_BOLD)
+                    setTextColor(Color.parseColor("#29475C"))
+                    background = roundedBackground(
+                        fillColor = Color.parseColor("#CCFFFFFF"),
+                        strokeColor = Color.TRANSPARENT,
+                        radiusDp = 11,
+                    )
+                    setPadding(dp(8), dp(4), dp(8), dp(4))
+                },
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP or Gravity.START,
+                ).apply {
+                    setMargins(dp(10), dp(10), 0, 0)
+                },
+            )
+
+            addView(
+                View(context).apply {
+                    background = roundedBackground(
+                        fillColor = Color.parseColor("#22FFFFFF"),
+                        strokeColor = Color.TRANSPARENT,
+                        radiusDp = 14,
+                    )
+                },
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(heightDp / 2),
+                    Gravity.CENTER,
+                ).apply {
+                    setMargins(dp(10), dp(18), dp(10), dp(18))
+                },
+            )
+
+            if (showOverlayTitle) {
+                addView(
+                    TextView(context).apply {
+                        text = attachment.title
+                        textSize = 13f
+                        setTypeface(Typeface.DEFAULT_BOLD)
+                        setTextColor(Color.WHITE)
+                        background = roundedBackground(
+                            fillColor = Color.parseColor("#5E213445"),
+                            strokeColor = Color.TRANSPARENT,
+                            radiusDp = 12,
+                        )
+                        setPadding(dp(10), dp(7), dp(10), dp(7))
+                        maxLines = 1
+                        ellipsize = TextUtils.TruncateAt.END
+                    },
+                    FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        Gravity.BOTTOM or Gravity.START,
+                    ).apply {
+                        setMargins(dp(10), 0, dp(10), dp(10))
+                    },
+                )
+            }
         }
     }
 
@@ -3152,6 +3395,27 @@ class MainActivity : Activity() {
                 ),
             )
         }
+    }
+
+    private fun cancelPendingWork() {
+        pendingWork?.let(handler::removeCallbacks)
+        pendingWork = null
+    }
+
+    private fun postPendingWork(
+        delayMs: Long,
+        block: () -> Unit,
+    ) {
+        cancelPendingWork()
+        lateinit var scheduled: Runnable
+        scheduled = Runnable {
+            if (pendingWork === scheduled) {
+                pendingWork = null
+            }
+            block()
+        }
+        pendingWork = scheduled
+        handler.postDelayed(scheduled, delayMs)
     }
 
     private fun wrapInSwipeRefresh(
@@ -3438,7 +3702,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun maxBubbleWidthPx(): Int = (resources.displayMetrics.widthPixels * 0.72f).roundToInt()
+    private fun maxBubbleWidthPx(): Int = (resources.displayMetrics.widthPixels * 0.66f).roundToInt()
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).roundToInt()
 

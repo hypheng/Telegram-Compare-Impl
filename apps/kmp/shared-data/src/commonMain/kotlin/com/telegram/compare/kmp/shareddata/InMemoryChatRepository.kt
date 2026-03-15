@@ -34,6 +34,17 @@ enum class ChatListScenario {
 class InMemoryChatRepository(
     private val snapshotStorage: SyncSnapshotStorage = InMemorySyncSnapshotStorage(),
 ) : ChatDetailRepository, ChatListRepository, SearchRepository, SyncRepository {
+    /**
+     * Demo-only in-memory repository used by the current KMP shell.
+     *
+     * Single-thread contract:
+     * - This repository is mutated only from the Android main thread in the current app shell.
+     * - It is not safe for concurrent access from multiple threads without an explicit synchronization strategy.
+     *
+     * Deferred follow-up:
+     * - split the per-slice contracts into smaller repositories if/when the shell stops using one
+     *   shared demo store for comparison delivery.
+     */
     private val chats = buildDefaultChats().toMutableList()
     private val availableMedia = buildAvailableMedia()
     private var chatListScenario: ChatListScenario = ChatListScenario.DEFAULT
