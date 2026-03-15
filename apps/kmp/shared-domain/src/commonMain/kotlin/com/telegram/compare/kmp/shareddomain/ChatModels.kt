@@ -9,8 +9,6 @@ data class ChatSummary(
     val avatarLabel: String,
     val isMuted: Boolean = false,
     val statusLabel: String = "",
-    val avatarBackgroundColorHex: String = "#EAF3FB",
-    val avatarTextColorHex: String = "#1F5F8B",
 )
 
 data class ChatListQuery(
@@ -77,7 +75,6 @@ data class MediaAttachment(
     val id: String,
     val title: String,
     val defaultCaption: String,
-    val accentColorHex: String,
 )
 
 sealed interface MediaPickerLoadResult {

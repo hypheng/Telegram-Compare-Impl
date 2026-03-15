@@ -97,8 +97,6 @@ private fun JSONObject.toChatSummary(): ChatSummary {
         avatarLabel = optString("avatarLabel", "TG"),
         isMuted = optBoolean("isMuted", false),
         statusLabel = optString("statusLabel", ""),
-        avatarBackgroundColorHex = optString("avatarBackgroundColorHex", "#EAF3FB"),
-        avatarTextColorHex = optString("avatarTextColorHex", "#1F5F8B"),
     )
 }
 
@@ -147,8 +145,6 @@ private fun ChatSummary.toJson(): JSONObject {
         .put("avatarLabel", avatarLabel)
         .put("isMuted", isMuted)
         .put("statusLabel", statusLabel)
-        .put("avatarBackgroundColorHex", avatarBackgroundColorHex)
-        .put("avatarTextColorHex", avatarTextColorHex)
 }
 
 private fun ChatThread.toJson(): JSONObject {
@@ -173,7 +169,6 @@ private fun JSONObject.toMediaAttachment(): MediaAttachment {
         id = optString("id", ""),
         title = optString("title", ""),
         defaultCaption = optString("defaultCaption", ""),
-        accentColorHex = optString("accentColorHex", "#EAF3FB"),
     )
 }
 
@@ -182,5 +177,4 @@ private fun MediaAttachment.toJson(): JSONObject {
         .put("id", id)
         .put("title", title)
         .put("defaultCaption", defaultCaption)
-        .put("accentColorHex", accentColorHex)
 }

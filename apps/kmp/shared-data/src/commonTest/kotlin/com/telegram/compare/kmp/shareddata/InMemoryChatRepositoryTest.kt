@@ -21,7 +21,8 @@ import kotlin.test.assertTrue
 class InMemoryChatRepositoryTest {
     @Test
     fun appendsSentMessageToChatHistory() {
-        val repository = InMemoryChatRepository()
+        val fixtureBundle = InMemoryChatFixtureBundle()
+        val repository = fixtureBundle.chatDetailRepository
 
         val before = repository.loadChatDetail("chat-1")
         val message = repository.sendMessage(chatId = "chat-1", text = "AI log updated")
@@ -37,7 +38,7 @@ class InMemoryChatRepositoryTest {
 
     @Test
     fun filtersChatsByTitleAndPreview() {
-        val repository = InMemoryChatRepository()
+        val repository = InMemoryChatFixtureBundle().chatListRepository
 
         val byTitle = repository.loadChatList(
             query = com.telegram.compare.kmp.shareddomain.ChatListQuery(keyword = "infra"),
@@ -54,8 +55,9 @@ class InMemoryChatRepositoryTest {
 
     @Test
     fun returnsEmptyWhenScenarioIsEmpty() {
-        val repository = InMemoryChatRepository()
-        repository.setChatListScenario(ChatListScenario.EMPTY)
+        val fixtureBundle = InMemoryChatFixtureBundle()
+        fixtureBundle.debugController.setChatListScenario(ChatListScenario.EMPTY)
+        val repository = fixtureBundle.chatListRepository
 
         val result = repository.loadChatList()
 
@@ -64,8 +66,9 @@ class InMemoryChatRepositoryTest {
 
     @Test
     fun returnsFailedWhenScenarioIsError() {
-        val repository = InMemoryChatRepository()
-        repository.setChatListScenario(ChatListScenario.ERROR)
+        val fixtureBundle = InMemoryChatFixtureBundle()
+        fixtureBundle.debugController.setChatListScenario(ChatListScenario.ERROR)
+        val repository = fixtureBundle.chatListRepository
 
         val result = repository.refreshChatList()
 
@@ -77,7 +80,7 @@ class InMemoryChatRepositoryTest {
 
     @Test
     fun refreshUpdatesTopChatPreview() {
-        val repository = InMemoryChatRepository()
+        val repository = InMemoryChatFixtureBundle().chatListRepository
 
         repository.refreshChatList()
         val result = repository.loadChatList()
@@ -89,7 +92,7 @@ class InMemoryChatRepositoryTest {
 
     @Test
     fun searchesChatsAndMessagesAcrossFixtures() {
-        val repository = InMemoryChatRepository()
+        val repository = InMemoryChatFixtureBundle().searchRepository
 
         val result = repository.search(
             query = SearchQuery(keyword = "settings"),
@@ -104,8 +107,9 @@ class InMemoryChatRepositoryTest {
 
     @Test
     fun returnsSearchFailureWhenListScenarioIsError() {
-        val repository = InMemoryChatRepository()
-        repository.setChatListScenario(ChatListScenario.ERROR)
+        val fixtureBundle = InMemoryChatFixtureBundle()
+        fixtureBundle.debugController.setChatListScenario(ChatListScenario.ERROR)
+        val repository = fixtureBundle.searchRepository
 
         val result = repository.search(
             query = SearchQuery(keyword = "viewport"),
@@ -119,7 +123,7 @@ class InMemoryChatRepositoryTest {
 
     @Test
     fun loadsFixtureMediaPickerOptions() {
-        val repository = InMemoryChatRepository()
+        val repository = InMemoryChatFixtureBundle().chatDetailRepository
 
         val result = repository.loadAvailableMedia()
 
@@ -129,14 +133,16 @@ class InMemoryChatRepositoryTest {
 
     @Test
     fun sendsMediaAndUpdatesPreview() {
-        val repository = InMemoryChatRepository()
+        val fixtureBundle = InMemoryChatFixtureBundle()
+        val detailRepository = fixtureBundle.chatDetailRepository
+        val listRepository = fixtureBundle.chatListRepository
 
-        val result = repository.sendMedia(
+        val result = detailRepository.sendMedia(
             chatId = "chat-2",
             mediaId = "media-3",
         )
-        val detail = repository.loadChatDetail("chat-2")
-        val list = repository.loadChatList()
+        val detail = detailRepository.loadChatDetail("chat-2")
+        val list = listRepository.loadChatList()
 
         assertIs<SendMediaResult.Success>(result)
         assertIs<ChatDetailLoadResult.Success>(detail)
@@ -148,8 +154,9 @@ class InMemoryChatRepositoryTest {
 
     @Test
     fun returnsFailedMessageWhenNextSendIsForcedToFail() {
-        val repository = InMemoryChatRepository()
-        repository.setNextSendShouldFail(true)
+        val fixtureBundle = InMemoryChatFixtureBundle()
+        fixtureBundle.debugController.setNextSendShouldFail(true)
+        val repository = fixtureBundle.chatDetailRepository
 
         val result = repository.sendMessage(
             chatId = "chat-2",
@@ -158,13 +165,14 @@ class InMemoryChatRepositoryTest {
 
         assertIs<SendMessageResult.Failed>(result)
         assertEquals(DeliveryState.FAILED, result.failedMessage?.deliveryState)
-        assertEquals(false, repository.nextSendWillFail())
+        assertEquals(false, fixtureBundle.debugController.nextSendWillFail())
     }
 
     @Test
     fun retryTurnsFailedMessageIntoSent() {
-        val repository = InMemoryChatRepository()
-        repository.setNextSendShouldFail(true)
+        val fixtureBundle = InMemoryChatFixtureBundle()
+        fixtureBundle.debugController.setNextSendShouldFail(true)
+        val repository = fixtureBundle.chatDetailRepository
         val failed = repository.sendMessage(
             chatId = "chat-2",
             text = "Retry me",
@@ -184,11 +192,11 @@ class InMemoryChatRepositoryTest {
     @Test
     fun restoresSavedDetailSnapshotIntoFreshRepository() {
         val storage = InMemorySyncSnapshotStorage()
-        val firstRepository = InMemoryChatRepository(snapshotStorage = storage)
-        firstRepository.refreshChatList()
-        firstRepository.sendMedia(chatId = "chat-1", mediaId = "media-1")
+        val firstBundle = InMemoryChatFixtureBundle(snapshotStorage = storage)
+        firstBundle.chatListRepository.refreshChatList()
+        firstBundle.chatDetailRepository.sendMedia(chatId = "chat-1", mediaId = "media-1")
 
-        val saved = firstRepository.saveSnapshot(
+        val saved = firstBundle.syncRepository.saveSnapshot(
             SyncSnapshotRequest(
                 route = SyncSnapshotRoute.CHAT_DETAIL,
                 searchKeyword = "telegram",
@@ -198,9 +206,9 @@ class InMemoryChatRepositoryTest {
 
         assertIs<SyncSnapshotSaveResult.Success>(saved)
 
-        val restoredRepository = InMemoryChatRepository(snapshotStorage = storage)
-        val restored = restoredRepository.restoreSnapshot()
-        val detail = restoredRepository.loadChatDetail("chat-1")
+        val restoredBundle = InMemoryChatFixtureBundle(snapshotStorage = storage)
+        val restored = restoredBundle.syncRepository.restoreSnapshot()
+        val detail = restoredBundle.chatDetailRepository.loadChatDetail("chat-1")
 
         assertIs<SyncSnapshotRestoreResult.Restored>(restored)
         assertEquals(SyncSnapshotRoute.CHAT_DETAIL, restored.snapshot.route)

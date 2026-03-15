@@ -11,13 +11,13 @@ import com.telegram.compare.kmp.shareddomain.DeliveryState
 import com.telegram.compare.kmp.shareddomain.MediaAttachment
 import com.telegram.compare.kmp.shareddomain.MediaPickerLoadResult
 import com.telegram.compare.kmp.shareddomain.Message
+import com.telegram.compare.kmp.shareddomain.MessageSearchHit
 import com.telegram.compare.kmp.shareddomain.RetryMessageResult
 import com.telegram.compare.kmp.shareddomain.SearchLoadResult
 import com.telegram.compare.kmp.shareddomain.SearchQuery
 import com.telegram.compare.kmp.shareddomain.SearchRepository
 import com.telegram.compare.kmp.shareddomain.SendMediaResult
 import com.telegram.compare.kmp.shareddomain.SendMessageResult
-import com.telegram.compare.kmp.shareddomain.MessageSearchHit
 import com.telegram.compare.kmp.shareddomain.SyncRepository
 import com.telegram.compare.kmp.shareddomain.SyncSnapshot
 import com.telegram.compare.kmp.shareddomain.SyncSnapshotRequest
@@ -31,22 +31,99 @@ enum class ChatListScenario {
     ERROR,
 }
 
-class InMemoryChatRepository(
-    private val snapshotStorage: SyncSnapshotStorage = InMemorySyncSnapshotStorage(),
-) : ChatDetailRepository, ChatListRepository, SearchRepository, SyncRepository {
-    /**
-     * Demo-only in-memory repository used by the current KMP shell.
-     *
-     * Single-thread contract:
-     * - This repository is mutated only from the Android main thread in the current app shell.
-     * - It is not safe for concurrent access from multiple threads without an explicit synchronization strategy.
-     *
-     * Deferred follow-up:
-     * - split the per-slice contracts into smaller repositories if/when the shell stops using one
-     *   shared demo store for comparison delivery.
-     */
-    private val chats = buildDefaultChats().toMutableList()
+class InMemoryChatFixtureBundle(
+    snapshotStorage: SyncSnapshotStorage = InMemorySyncSnapshotStorage(),
+) {
+    private val store = InMemoryChatStore(snapshotStorage)
+
+    val chatListRepository: ChatListRepository = InMemoryChatListRepository(store)
+    val chatDetailRepository: ChatDetailRepository = InMemoryChatDetailRepository(store)
+    val searchRepository: SearchRepository = InMemorySearchRepository(store)
+    val syncRepository: SyncRepository = InMemorySyncRepository(store)
+    val debugController = InMemoryChatDebugController(store)
+}
+
+class InMemoryChatDebugController internal constructor(
+    private val store: InMemoryChatStore,
+) {
+    fun setChatListScenario(next: ChatListScenario) {
+        store.setChatListScenario(next)
+    }
+
+    fun currentChatListScenario(): ChatListScenario = store.currentChatListScenario()
+
+    fun restoreDefaultFixtures() {
+        store.restoreDefaultFixtures()
+    }
+
+    fun setNextSendShouldFail(enabled: Boolean) {
+        store.setNextSendShouldFail(enabled)
+    }
+
+    fun nextSendWillFail(): Boolean = store.nextSendWillFail()
+}
+
+private class InMemoryChatListRepository(
+    private val store: InMemoryChatStore,
+) : ChatListRepository {
+    override fun loadChatList(query: ChatListQuery): ChatListLoadResult = store.loadChatList(query)
+
+    override fun refreshChatList(query: ChatListQuery): ChatListLoadResult = store.refreshChatList(query)
+}
+
+private class InMemoryChatDetailRepository(
+    private val store: InMemoryChatStore,
+) : ChatDetailRepository {
+    override fun loadChatDetail(chatId: String): ChatDetailLoadResult = store.loadChatDetail(chatId)
+
+    override fun sendMessage(
+        chatId: String,
+        text: String,
+    ): SendMessageResult = store.sendMessage(chatId, text)
+
+    override fun retryMessage(
+        chatId: String,
+        messageId: String,
+    ): RetryMessageResult = store.retryMessage(chatId, messageId)
+
+    override fun loadAvailableMedia(): MediaPickerLoadResult = store.loadAvailableMedia()
+
+    override fun sendMedia(
+        chatId: String,
+        mediaId: String,
+    ): SendMediaResult = store.sendMedia(chatId, mediaId)
+}
+
+private class InMemorySearchRepository(
+    private val store: InMemoryChatStore,
+) : SearchRepository {
+    override fun search(query: SearchQuery): SearchLoadResult = store.search(query)
+}
+
+private class InMemorySyncRepository(
+    private val store: InMemoryChatStore,
+) : SyncRepository {
+    override fun restoreSnapshot(): SyncSnapshotRestoreResult = store.restoreSnapshot()
+
+    override fun saveSnapshot(request: SyncSnapshotRequest): SyncSnapshotSaveResult = store.saveSnapshot(request)
+
+    override fun clearSnapshot() {
+        store.clearSnapshot()
+    }
+}
+
+/**
+ * Demo-only in-memory fixture store used by the current KMP shell.
+ *
+ * Single-thread contract:
+ * - The current Android shell mutates this store only from the main thread.
+ * - It is not safe for concurrent access from multiple threads without an explicit synchronization strategy.
+ */
+internal class InMemoryChatStore(
+    private val snapshotStorage: SyncSnapshotStorage,
+) {
     private val availableMedia = buildAvailableMedia()
+    private val chats = buildDefaultChats().toMutableList()
     private var chatListScenario: ChatListScenario = ChatListScenario.DEFAULT
     private var refreshCount = 0
     private var nextSendShouldFail = false
@@ -56,7 +133,7 @@ class InMemoryChatRepository(
         .mapValues { (_, messages) -> messages.toMutableList() }
         .toMutableMap()
 
-    override fun loadChatList(query: ChatListQuery): ChatListLoadResult {
+    fun loadChatList(query: ChatListQuery): ChatListLoadResult {
         return when (chatListScenario) {
             ChatListScenario.ERROR -> ChatListLoadResult.Failed("会话列表加载失败，请下拉重试。")
             ChatListScenario.EMPTY -> ChatListLoadResult.Empty
@@ -66,7 +143,7 @@ class InMemoryChatRepository(
         }
     }
 
-    override fun refreshChatList(query: ChatListQuery): ChatListLoadResult {
+    fun refreshChatList(query: ChatListQuery): ChatListLoadResult {
         return when (chatListScenario) {
             ChatListScenario.ERROR -> ChatListLoadResult.Failed("刷新失败，请稍后再试。")
             ChatListScenario.EMPTY -> ChatListLoadResult.Empty
@@ -85,12 +162,12 @@ class InMemoryChatRepository(
         }
     }
 
-    override fun loadChatDetail(chatId: String): ChatDetailLoadResult {
+    fun loadChatDetail(chatId: String): ChatDetailLoadResult {
         return resolveThread(chatId)?.let { ChatDetailLoadResult.Success(it) }
             ?: ChatDetailLoadResult.Failed("未找到该会话。")
     }
 
-    override fun search(query: SearchQuery): SearchLoadResult {
+    fun search(query: SearchQuery): SearchLoadResult {
         return when (chatListScenario) {
             ChatListScenario.ERROR -> SearchLoadResult.Failed("搜索暂不可用，请稍后重试。")
             ChatListScenario.EMPTY -> SearchLoadResult.Empty
@@ -127,7 +204,7 @@ class InMemoryChatRepository(
         }
     }
 
-    override fun sendMessage(
+    fun sendMessage(
         chatId: String,
         text: String,
     ): SendMessageResult {
@@ -170,11 +247,11 @@ class InMemoryChatRepository(
         }
     }
 
-    override fun loadAvailableMedia(): MediaPickerLoadResult {
+    fun loadAvailableMedia(): MediaPickerLoadResult {
         return MediaPickerLoadResult.Success(availableMedia)
     }
 
-    override fun sendMedia(
+    fun sendMedia(
         chatId: String,
         mediaId: String,
     ): SendMediaResult {
@@ -211,7 +288,7 @@ class InMemoryChatRepository(
         )
     }
 
-    override fun retryMessage(
+    fun retryMessage(
         chatId: String,
         messageId: String,
     ): RetryMessageResult {
@@ -253,7 +330,7 @@ class InMemoryChatRepository(
         )
     }
 
-    override fun restoreSnapshot(): SyncSnapshotRestoreResult {
+    fun restoreSnapshot(): SyncSnapshotRestoreResult {
         val snapshot = snapshotStorage.read() ?: return SyncSnapshotRestoreResult.NoSnapshot
 
         return runCatching {
@@ -266,7 +343,7 @@ class InMemoryChatRepository(
         }
     }
 
-    override fun saveSnapshot(request: SyncSnapshotRequest): SyncSnapshotSaveResult {
+    fun saveSnapshot(request: SyncSnapshotRequest): SyncSnapshotSaveResult {
         val normalizedChatId = request.selectedChatId?.trim()?.ifBlank { null }
         if (request.route == SyncSnapshotRoute.CHAT_DETAIL && normalizedChatId == null) {
             return SyncSnapshotSaveResult.Failed("未找到需要缓存的聊天详情。")
@@ -286,7 +363,7 @@ class InMemoryChatRepository(
         return SyncSnapshotSaveResult.Success(snapshot)
     }
 
-    override fun clearSnapshot() {
+    fun clearSnapshot() {
         snapshotStorage.clear()
     }
 
@@ -435,8 +512,6 @@ private fun buildDefaultChats(): List<ChatSummary> {
             lastMessageAtLabel = "09:24",
             avatarLabel = "TC",
             statusLabel = "last seen recently",
-            avatarBackgroundColorHex = "#DDF0FF",
-            avatarTextColorHex = "#0E5D91",
         ),
         ChatSummary(
             id = "chat-2",
@@ -447,8 +522,6 @@ private fun buildDefaultChats(): List<ChatSummary> {
             avatarLabel = "AI",
             isMuted = true,
             statusLabel = "syncing logs",
-            avatarBackgroundColorHex = "#E8EAFD",
-            avatarTextColorHex = "#4E5ABD",
         ),
         ChatSummary(
             id = "chat-3",
@@ -458,8 +531,6 @@ private fun buildDefaultChats(): List<ChatSummary> {
             lastMessageAtLabel = "昨天",
             avatarLabel = "PD",
             statusLabel = "reviewing handoff",
-            avatarBackgroundColorHex = "#FFEBCD",
-            avatarTextColorHex = "#A15E12",
         ),
         ChatSummary(
             id = "chat-4",
@@ -469,8 +540,6 @@ private fun buildDefaultChats(): List<ChatSummary> {
             lastMessageAtLabel = "周四",
             avatarLabel = "KD",
             statusLabel = "typing...",
-            avatarBackgroundColorHex = "#E5F7EC",
-            avatarTextColorHex = "#1D7A47",
         ),
         ChatSummary(
             id = "chat-5",
@@ -480,8 +549,6 @@ private fun buildDefaultChats(): List<ChatSummary> {
             lastMessageAtLabel = "周三",
             avatarLabel = "QA",
             statusLabel = "online",
-            avatarBackgroundColorHex = "#FFE4EC",
-            avatarTextColorHex = "#A03B63",
         ),
         ChatSummary(
             id = "chat-6",
@@ -491,8 +558,6 @@ private fun buildDefaultChats(): List<ChatSummary> {
             lastMessageAtLabel = "周二",
             avatarLabel = "GO",
             statusLabel = "last seen 2h ago",
-            avatarBackgroundColorHex = "#EAF7FF",
-            avatarTextColorHex = "#2B6B98",
         ),
         ChatSummary(
             id = "chat-7",
@@ -502,8 +567,6 @@ private fun buildDefaultChats(): List<ChatSummary> {
             lastMessageAtLabel = "周一",
             avatarLabel = "DS",
             statusLabel = "reviewing",
-            avatarBackgroundColorHex = "#F0E8FF",
-            avatarTextColorHex = "#6541A8",
         ),
         ChatSummary(
             id = "chat-8",
@@ -513,8 +576,6 @@ private fun buildDefaultChats(): List<ChatSummary> {
             lastMessageAtLabel = "3月12日",
             avatarLabel = "RN",
             statusLabel = "drafting summary",
-            avatarBackgroundColorHex = "#FDEDDC",
-            avatarTextColorHex = "#9E6316",
         ),
         ChatSummary(
             id = "chat-9",
@@ -524,8 +585,6 @@ private fun buildDefaultChats(): List<ChatSummary> {
             lastMessageAtLabel = "3月10日",
             avatarLabel = "BS",
             statusLabel = "awaiting input",
-            avatarBackgroundColorHex = "#E7F8F0",
-            avatarTextColorHex = "#25704A",
         ),
         ChatSummary(
             id = "chat-10",
@@ -535,8 +594,6 @@ private fun buildDefaultChats(): List<ChatSummary> {
             lastMessageAtLabel = "3月08日",
             avatarLabel = "MD",
             statusLabel = "fixture owner",
-            avatarBackgroundColorHex = "#ECEFF3",
-            avatarTextColorHex = "#5D6875",
         ),
     )
 }
@@ -547,19 +604,16 @@ private fun buildAvailableMedia(): List<MediaAttachment> {
             id = "media-1",
             title = "Settings reference",
             defaultCaption = "Telegram-style settings reference",
-            accentColorHex = "#A6D4FF",
         ),
         MediaAttachment(
             id = "media-2",
             title = "Search evidence",
             defaultCaption = "Fresh emulator screenshot for the search flow.",
-            accentColorHex = "#FFD6A5",
         ),
         MediaAttachment(
             id = "media-3",
             title = "Delivery board",
             defaultCaption = "Media picker board for the S7 acceptance path.",
-            accentColorHex = "#CFEFD0",
         ),
     )
 }

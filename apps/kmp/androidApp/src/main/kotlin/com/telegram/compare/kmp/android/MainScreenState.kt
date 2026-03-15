@@ -6,6 +6,7 @@ import com.telegram.compare.kmp.shareddomain.MediaAttachment
 import com.telegram.compare.kmp.shareddomain.MessageSearchHit
 import com.telegram.compare.kmp.shareddomain.SettingsSnapshot
 import com.telegram.compare.kmp.shareddomain.UserSession
+import com.telegram.compare.kmp.shareddata.ChatListScenario
 
 sealed interface MainScreenState {
     object Restoring : MainScreenState
@@ -14,6 +15,9 @@ sealed interface MainScreenState {
         val restoreMessage: String? = null,
         val formMessage: String? = null,
         val isSubmitting: Boolean = false,
+        val phoneDraft: String = "",
+        val codeDraft: String = "",
+        val demoAuthEnabled: Boolean = true,
     ) : MainScreenState
 
     data class ChatList(
@@ -22,6 +26,7 @@ sealed interface MainScreenState {
         val contentState: ChatListContentState = ChatListContentState.Loading,
         val searchDraft: String = "",
         val isRefreshing: Boolean = false,
+        val debugScenario: ChatListScenario = ChatListScenario.DEFAULT,
     ) : MainScreenState
 
     data class Search(

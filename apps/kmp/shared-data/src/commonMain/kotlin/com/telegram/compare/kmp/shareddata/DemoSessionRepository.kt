@@ -7,6 +7,7 @@ import com.telegram.compare.kmp.shareddomain.UserSession
 
 class DemoSessionRepository(
     private val storage: SessionStorage,
+    private val demoAuthEnabled: Boolean = true,
 ) : SessionRepository {
     /*
      * Demo-only auth repository for the current comparison shell.
@@ -28,6 +29,9 @@ class DemoSessionRepository(
         phoneNumber: String,
         verificationCode: String,
     ): LoginResult {
+        if (!demoAuthEnabled) {
+            return LoginResult.Failed("当前构建未启用 demo 登录。")
+        }
         if (verificationCode != DEMO_VERIFICATION_CODE) {
             return LoginResult.Failed("验证码不正确，请输入 demo 验证码 2046。")
         }
@@ -50,6 +54,10 @@ class DemoSessionRepository(
     }
 
     fun seedExpiredSession() {
+        if (!demoAuthEnabled) {
+            storage.clear()
+            return
+        }
         val current = storage.read()
         val expiredSession = current?.copy(status = PersistedSessionStatus.EXPIRED)
             ?: PersistedSession(

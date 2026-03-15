@@ -2,31 +2,31 @@
 
 Updated: 2026-03-15
 
-## Deferred from PR #1
+## Addressed in the PR #1 follow-up update
 
 ### MainActivity decomposition
 
-- Split [MainActivity.kt](/Users/haifengsong/code-base/telegram/Telegram-Compare-Impl/apps/kmp/androidApp/src/main/kotlin/com/telegram/compare/kmp/android/MainActivity.kt) into:
-  - a state holder / presenter or ViewModel-like coordinator
-  - per-screen UI builders for `Login`, `ChatList`, `ChatDetail`, `Search`, and `Settings`
-  - a slimmer navigation/router layer
-- Reason deferred:
-  - valid structural concern, but too large for the current PR update without turning a targeted slice-delivery branch into a broad refactor branch
+- [MainActivity.kt](/Users/haifengsong/code-base/telegram/Telegram-Compare-Impl/apps/kmp/androidApp/src/main/kotlin/com/telegram/compare/kmp/android/MainActivity.kt) now acts as the flow coordinator.
+- Per-screen UI builders moved to [MainActivityScreenBuilders.kt](/Users/haifengsong/code-base/telegram/Telegram-Compare-Impl/apps/kmp/androidApp/src/main/kotlin/com/telegram/compare/kmp/android/MainActivityScreenBuilders.kt) for `Login`, `ChatList`, `ChatDetail`, `Search`, and `Settings`.
+- Remaining note:
+  - state and routing are still coordinated inside `MainActivity`; a true presenter / ViewModel layer is optional future cleanup, not a blocker for the demo comparison shell.
 
 ### Repository contract split
 
-- Split [InMemoryChatRepository.kt](/Users/haifengsong/code-base/telegram/Telegram-Compare-Impl/apps/kmp/shared-data/src/commonMain/kotlin/com/telegram/compare/kmp/shareddata/InMemoryChatRepository.kt) by responsibility instead of keeping one demo store behind multiple repository interfaces
-- Reason deferred:
-  - the current branch still uses one in-memory fixture store to compare slices quickly; untangling the contracts is worthwhile but larger than a review follow-up patch
+- [InMemoryChatRepository.kt](/Users/haifengsong/code-base/telegram/Telegram-Compare-Impl/apps/kmp/shared-data/src/commonMain/kotlin/com/telegram/compare/kmp/shareddata/InMemoryChatRepository.kt) no longer exposes one god repository implementing four contracts.
+- The file now provides:
+  - `InMemoryChatFixtureBundle`
+  - `InMemoryChatDebugController`
+  - per-contract repositories for chat list, chat detail, search, and sync
 
 ### UI presentation data in shared domain
 
-- Move avatar color styling out of [ChatModels.kt](/Users/haifengsong/code-base/telegram/Telegram-Compare-Impl/apps/kmp/shared-domain/src/commonMain/kotlin/com/telegram/compare/kmp/shareddomain/ChatModels.kt) into a presentation wrapper or dedicated avatar-style model
-- Reason deferred:
-  - would cascade through shared-domain, shared-data fixtures, snapshot persistence, and Android shell rendering
+- Avatar and media color styling were removed from [ChatModels.kt](/Users/haifengsong/code-base/telegram/Telegram-Compare-Impl/apps/kmp/shared-domain/src/commonMain/kotlin/com/telegram/compare/kmp/shareddomain/ChatModels.kt).
+- Android presentation styling is now derived locally in [MainActivityScreenBuilders.kt](/Users/haifengsong/code-base/telegram/Telegram-Compare-Impl/apps/kmp/androidApp/src/main/kotlin/com/telegram/compare/kmp/android/MainActivityScreenBuilders.kt).
 
 ### Release-safe auth wiring
 
-- Replace the current demo-only [DemoSessionRepository.kt](/Users/haifengsong/code-base/telegram/Telegram-Compare-Impl/apps/kmp/shared-data/src/commonMain/kotlin/com/telegram/compare/kmp/shareddata/DemoSessionRepository.kt) with an explicitly debug/dev-only wiring strategy before any non-demo distribution path
-- Reason deferred:
-  - current comparison app is still demo-slice delivery infrastructure; this needs product-level build-variant and repository wiring rather than a small patch
+- [DemoSessionRepository.kt](/Users/haifengsong/code-base/telegram/Telegram-Compare-Impl/apps/kmp/shared-data/src/commonMain/kotlin/com/telegram/compare/kmp/shareddata/DemoSessionRepository.kt) now takes `demoAuthEnabled`.
+- `MainActivity` wires demo auth only when the Android app is debuggable.
+- Remaining note:
+  - if the project ever introduces a non-demo auth path, this should become a build-variant or dependency-injection decision instead of one repository flag.
