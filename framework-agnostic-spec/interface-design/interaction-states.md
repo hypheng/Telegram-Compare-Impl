@@ -17,6 +17,14 @@
 | Restore session | App launch | skeleton / splash progress | 直接恢复上下文 | fallback 到登录 |
 | AI summarize | 打开 AI overlay | overlay loading | 流式或分段展示结果 | overlay error + retry |
 
+## S1 补充状态
+
+| Flow | Trigger | Loading Feedback | Success Feedback | Failure Feedback |
+|---|---|---|---|---|
+| Retry restore | 登录页点击重试恢复 | 顶部 restoring banner | 直接进入主壳入口 | 回到登录页并更新错误文案 |
+| Logout | 主壳点击退出登录 | 次级按钮禁用 | 返回登录页 | 轻量 banner，允许重试 |
+| Seed expired session (debug) | 主壳点击调试入口 | 轻量 toast / banner | 下次冷启动可验证 restore failed | 不展示系统级错误，只提示写入失败 |
+
 ## 手势与反馈
 
 - Chat list row: tap 进入，swipe 作为次级操作预留

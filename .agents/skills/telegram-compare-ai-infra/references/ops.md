@@ -28,6 +28,7 @@
 
 关键脚本:
 
+- `.agents/setup/check-codex-ai-infra.sh`
 - `.agents/setup/check-android-env.sh`
 - `.agents/setup/check-kmp-env.sh`
 - `.agents/setup/check-cjmp-env.sh`

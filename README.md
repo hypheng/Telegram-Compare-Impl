@@ -36,6 +36,7 @@
 ```bash
 ./scripts/check-dev-env.sh
 ./scripts/verify-layout.sh
+bash ./.agents/setup/check-codex-ai-infra.sh
 bash ./scripts/kmp-doctor.sh
 bash ./.agents/setup/bootstrap-codex-mcp.sh
 bash ./.agents/setup/install-curated-skills.sh
@@ -45,6 +46,7 @@ bash ./.agents/setup/check-android-env.sh
 说明:
 
 - 上面两个 setup 脚本默认是 dry-run。
+- `check-codex-ai-infra.sh` 会同时检查 repo-local 控制面、必需 MCP 和推荐全局 skills。
 - 需要真实写入 `~/.codex/` 时，请追加 `--apply`。
 - 当前本机工具链检查结果见 `.agents/todos/ai-gap-list.md` 和 `./scripts/check-dev-env.sh`。
 - KMP 轨道的 repo-level 自检入口是 `bash ./scripts/kmp-doctor.sh`。

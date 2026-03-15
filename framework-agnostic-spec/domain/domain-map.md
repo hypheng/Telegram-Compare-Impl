@@ -32,6 +32,17 @@
 
 `idle -> loading -> authenticated | failed`
 
+### S1 启动恢复
+
+`booting -> restoring -> authenticated | login-required | restore-failed`
+
+## S1 补充对象
+
+- `UserSession`: 当前账号、展示名称、手机号和会话标识
+- `SessionRestoreResult`: `Restored`、`NoSession`、`Failed`
+- `LoginResult`: `Success`、`InvalidInput`、`Failed`
+- `SessionRepository`: 恢复、登录、登出与持久化边界
+
 ### 会话列表
 
 `empty -> loading -> ready | failed`
@@ -45,4 +56,3 @@
 - 领域模型不能先绑定某个框架的状态容器或 UI 生命周期
 - 网络、存储、导航只在适配层绑定平台
 - AI 助手能力必须作为独立 overlay，而不是侵入所有业务对象
-

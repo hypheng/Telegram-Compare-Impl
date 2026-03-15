@@ -24,6 +24,10 @@
 | S7 | 媒体消息 | P2 | 支持图片消息的展示与发送 |
 | S8 | AI 助手增强能力 | P2 | 至少有一个 AI 场景用于展示“AI 生成商用品”的潜力 |
 
+## 已细化切片
+
+- `S1 登录与会话恢复`: 详见 `framework-agnostic-spec/requirements/s1-login-session-restore.md`
+
 ## 非功能要求
 
 | 类型 | 要求 |

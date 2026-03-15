@@ -27,6 +27,7 @@ check_cmd adb
 
 echo
 echo "Specialized checks:"
+echo "- bash ./.agents/setup/check-codex-ai-infra.sh"
 echo "- bash ./.agents/setup/check-android-env.sh"
 echo "- bash ./.agents/setup/check-kmp-env.sh"
 echo "- bash ./.agents/setup/check-cjmp-env.sh"
