@@ -19,120 +19,15 @@ enum class ChatListScenario {
 }
 
 class InMemoryChatRepository : ChatDetailRepository, ChatListRepository {
-    private val chats = mutableListOf(
-        ChatSummary(
-            id = "chat-1",
-            title = "Telegram Compare",
-            lastMessagePreview = "Bootstrap the KMP track",
-            unreadCount = 3,
-            lastMessageAtLabel = "09:24",
-            avatarLabel = "TC",
-        ),
-        ChatSummary(
-            id = "chat-2",
-            title = "AI Infra",
-            lastMessagePreview = "Need a reliable debug loop",
-            unreadCount = 1,
-            lastMessageAtLabel = "08:11",
-            avatarLabel = "AI",
-            isMuted = true,
-        ),
-        ChatSummary(
-            id = "chat-3",
-            title = "Product Design",
-            lastMessagePreview = "S2 needs a Telegram-style search field.",
-            unreadCount = 0,
-            lastMessageAtLabel = "昨天",
-            avatarLabel = "PD",
-        ),
-        ChatSummary(
-            id = "chat-4",
-            title = "KMP Delivery",
-            lastMessagePreview = "Wire the shared-domain use cases first.",
-            unreadCount = 6,
-            lastMessageAtLabel = "周四",
-            avatarLabel = "KD",
-        ),
-    )
+    private val chats = buildDefaultChats().toMutableList()
     private var chatListScenario: ChatListScenario = ChatListScenario.DEFAULT
     private var refreshCount = 0
     private var nextSendShouldFail = false
-    private var messageCounter = 8
+    private var messageCounter = DEFAULT_MESSAGE_COUNTER
 
-    private val messagesByChat = mutableMapOf(
-        "chat-1" to mutableListOf(
-            Message(
-                id = "message-1",
-                chatId = "chat-1",
-                text = "Spec is ready. Build the KMP shell next.",
-                sentAtLabel = "09:08",
-                isOutgoing = false,
-                deliveryState = DeliveryState.SENT,
-            ),
-            Message(
-                id = "message-2",
-                chatId = "chat-1",
-                text = "Understood. I will keep the acceptance evidence synced.",
-                sentAtLabel = "09:12",
-                isOutgoing = true,
-                deliveryState = DeliveryState.SENT,
-            ),
-            Message(
-                id = "message-3",
-                chatId = "chat-1",
-                text = "Remember to log AI friction and blockers.",
-                sentAtLabel = "09:24",
-                isOutgoing = false,
-                deliveryState = DeliveryState.SENT,
-            ),
-        ),
-        "chat-2" to mutableListOf(
-            Message(
-                id = "message-4",
-                chatId = "chat-2",
-                text = "Issue labels should distinguish common and KMP-specific friction.",
-                sentAtLabel = "08:11",
-                isOutgoing = false,
-                deliveryState = DeliveryState.SENT,
-            ),
-        ),
-        "chat-3" to mutableListOf(
-            Message(
-                id = "message-5",
-                chatId = "chat-3",
-                text = "Default state and failure state should both be ready-for-dev.",
-                sentAtLabel = "昨天",
-                isOutgoing = false,
-                deliveryState = DeliveryState.SENT,
-            ),
-            Message(
-                id = "message-6",
-                chatId = "chat-3",
-                text = "I'll keep the visual density close to Telegram.",
-                sentAtLabel = "昨天",
-                isOutgoing = true,
-                deliveryState = DeliveryState.SENT,
-            ),
-        ),
-        "chat-4" to mutableListOf(
-            Message(
-                id = "message-7",
-                chatId = "chat-4",
-                text = "Refresh needs a visible indicator and updated fixture data.",
-                sentAtLabel = "周四",
-                isOutgoing = false,
-                deliveryState = DeliveryState.SENT,
-            ),
-            Message(
-                id = "message-8",
-                chatId = "chat-4",
-                text = "Agreed. I will wire the Android shell after the shared layer lands.",
-                sentAtLabel = "周四",
-                isOutgoing = true,
-                deliveryState = DeliveryState.SENT,
-            ),
-        ),
-    )
+    private val messagesByChat = buildDefaultMessages()
+        .mapValues { (_, messages) -> messages.toMutableList() }
+        .toMutableMap()
 
     override fun loadChatList(query: ChatListQuery): ChatListLoadResult {
         return when (chatListScenario) {
@@ -259,6 +154,20 @@ class InMemoryChatRepository : ChatDetailRepository, ChatListRepository {
 
     fun currentChatListScenario(): ChatListScenario = chatListScenario
 
+    fun restoreDefaultFixtures() {
+        chats.clear()
+        chats += buildDefaultChats()
+        messagesByChat.clear()
+        messagesByChat.putAll(
+            buildDefaultMessages()
+                .mapValues { (_, messages) -> messages.toMutableList() },
+        )
+        chatListScenario = ChatListScenario.DEFAULT
+        refreshCount = 0
+        nextSendShouldFail = false
+        messageCounter = DEFAULT_MESSAGE_COUNTER
+    }
+
     fun setNextSendShouldFail(enabled: Boolean) {
         nextSendShouldFail = enabled
     }
@@ -325,4 +234,165 @@ class InMemoryChatRepository : ChatDetailRepository, ChatListRepository {
         messageCounter += 1
         return "message-$messageCounter"
     }
+
+    private companion object {
+        const val DEFAULT_MESSAGE_COUNTER = 24
+    }
+}
+
+private fun buildDefaultChats(): List<ChatSummary> {
+    return listOf(
+        ChatSummary(
+            id = "chat-1",
+            title = "Telegram Compare",
+            lastMessagePreview = "Refine the KMP shell before CJMP parity.",
+            unreadCount = 3,
+            lastMessageAtLabel = "09:24",
+            avatarLabel = "TC",
+            statusLabel = "last seen recently",
+            avatarBackgroundColorHex = "#DDF0FF",
+            avatarTextColorHex = "#0E5D91",
+        ),
+        ChatSummary(
+            id = "chat-2",
+            title = "AI Infra",
+            lastMessagePreview = "Figma MCP is ready, waiting for editable frames.",
+            unreadCount = 1,
+            lastMessageAtLabel = "08:11",
+            avatarLabel = "AI",
+            isMuted = true,
+            statusLabel = "syncing logs",
+            avatarBackgroundColorHex = "#E8EAFD",
+            avatarTextColorHex = "#4E5ABD",
+        ),
+        ChatSummary(
+            id = "chat-3",
+            title = "Product Design",
+            lastMessagePreview = "S2 still needs a Telegram-style search field.",
+            unreadCount = 0,
+            lastMessageAtLabel = "昨天",
+            avatarLabel = "PD",
+            statusLabel = "reviewing handoff",
+            avatarBackgroundColorHex = "#FFEBCD",
+            avatarTextColorHex = "#A15E12",
+        ),
+        ChatSummary(
+            id = "chat-4",
+            title = "KMP Delivery",
+            lastMessagePreview = "Wire the shared-domain use cases before polishing UI.",
+            unreadCount = 6,
+            lastMessageAtLabel = "周四",
+            avatarLabel = "KD",
+            statusLabel = "typing...",
+            avatarBackgroundColorHex = "#E5F7EC",
+            avatarTextColorHex = "#1D7A47",
+        ),
+        ChatSummary(
+            id = "chat-5",
+            title = "QA Evidence",
+            lastMessagePreview = "Need another screenshot after the scroll-boundary fix.",
+            unreadCount = 2,
+            lastMessageAtLabel = "周三",
+            avatarLabel = "QA",
+            statusLabel = "online",
+            avatarBackgroundColorHex = "#FFE4EC",
+            avatarTextColorHex = "#A03B63",
+        ),
+        ChatSummary(
+            id = "chat-6",
+            title = "Growth Ops",
+            lastMessagePreview = "Longer preview copy helps validate truncation in the row layout.",
+            unreadCount = 0,
+            lastMessageAtLabel = "周二",
+            avatarLabel = "GO",
+            statusLabel = "last seen 2h ago",
+            avatarBackgroundColorHex = "#EAF7FF",
+            avatarTextColorHex = "#2B6B98",
+        ),
+        ChatSummary(
+            id = "chat-7",
+            title = "Design Systems",
+            lastMessagePreview = "Avatar colors and muted metadata should feel less generic.",
+            unreadCount = 12,
+            lastMessageAtLabel = "周一",
+            avatarLabel = "DS",
+            statusLabel = "reviewing",
+            avatarBackgroundColorHex = "#F0E8FF",
+            avatarTextColorHex = "#6541A8",
+        ),
+        ChatSummary(
+            id = "chat-8",
+            title = "Release Notes",
+            lastMessagePreview = "S4 planning starts after the S1-S3 UI stabilizes.",
+            unreadCount = 0,
+            lastMessageAtLabel = "3月12日",
+            avatarLabel = "RN",
+            statusLabel = "drafting summary",
+            avatarBackgroundColorHex = "#FDEDDC",
+            avatarTextColorHex = "#9E6316",
+        ),
+        ChatSummary(
+            id = "chat-9",
+            title = "Bot Sandbox",
+            lastMessagePreview = "Search should still find keywords inside preview text.",
+            unreadCount = 4,
+            lastMessageAtLabel = "3月10日",
+            avatarLabel = "BS",
+            statusLabel = "awaiting input",
+            avatarBackgroundColorHex = "#E7F8F0",
+            avatarTextColorHex = "#25704A",
+        ),
+        ChatSummary(
+            id = "chat-10",
+            title = "Mock Data Lab",
+            lastMessagePreview = "Need enough rows to force a real scroll region on small screens.",
+            unreadCount = 0,
+            lastMessageAtLabel = "3月08日",
+            avatarLabel = "MD",
+            statusLabel = "fixture owner",
+            avatarBackgroundColorHex = "#ECEFF3",
+            avatarTextColorHex = "#5D6875",
+        ),
+    )
+}
+
+private fun buildDefaultMessages(): Map<String, List<Message>> {
+    return mapOf(
+        "chat-1" to listOf(
+            Message("message-1", "chat-1", "Spec is ready. Build the KMP shell next.", "09:02", false, DeliveryState.SENT),
+            Message("message-2", "chat-1", "Understood. I will keep the acceptance evidence synced.", "09:05", true, DeliveryState.SENT),
+            Message("message-3", "chat-1", "The whole page still scrolls. Fix the viewport boundaries first.", "09:09", false, DeliveryState.SENT),
+            Message("message-4", "chat-1", "I am moving top chrome and composer out of the scroll container.", "09:11", true, DeliveryState.SENT),
+            Message("message-5", "chat-1", "Good. The list should feel denser and closer to Telegram.", "09:13", false, DeliveryState.SENT),
+            Message("message-6", "chat-1", "I will tighten row spacing and flatten the visual treatment.", "09:15", true, DeliveryState.SENT),
+            Message("message-7", "chat-1", "Do not forget richer fixture data for long titles and previews.", "09:17", false, DeliveryState.SENT),
+            Message("message-8", "chat-1", "Adding more chats and longer copy now.", "09:18", true, DeliveryState.SENT),
+            Message("message-9", "chat-1", "Composer must stay pinned while the thread keeps scrolling.", "09:20", false, DeliveryState.SENT),
+            Message("message-10", "chat-1", "That will also make send and retry states much easier to read.", "09:22", true, DeliveryState.SENT),
+            Message("message-11", "chat-1", "Remember to log AI friction and blockers.", "09:23", false, DeliveryState.SENT),
+            Message("message-12", "chat-1", "Refine the KMP shell before CJMP parity.", "09:24", true, DeliveryState.SENT),
+        ),
+        "chat-2" to listOf(
+            Message("message-13", "chat-2", "Issue labels should distinguish common and KMP-specific friction.", "08:01", false, DeliveryState.SENT),
+            Message("message-14", "chat-2", "Agreed. The design blocker is no longer MCP access, it is the missing editable file.", "08:06", true, DeliveryState.SENT),
+            Message("message-15", "chat-2", "Keep the infra summary concise in each acceptance note.", "08:11", false, DeliveryState.SENT),
+        ),
+        "chat-3" to listOf(
+            Message("message-16", "chat-3", "Default state and failure state should both be ready-for-dev.", "昨天", false, DeliveryState.SENT),
+            Message("message-17", "chat-3", "I will keep the visual density close to Telegram.", "昨天", true, DeliveryState.SENT),
+            Message("message-18", "chat-3", "The search field still needs better native spacing.", "昨天", false, DeliveryState.SENT),
+        ),
+        "chat-4" to listOf(
+            Message("message-19", "chat-4", "Refresh needs a visible indicator and updated fixture data.", "周四", false, DeliveryState.SENT),
+            Message("message-20", "chat-4", "Agreed. I will wire the Android shell after the shared layer lands.", "周四", true, DeliveryState.SENT),
+            Message("message-21", "chat-4", "Do not let debug controls dominate the viewport.", "周四", false, DeliveryState.SENT),
+        ),
+        "chat-5" to listOf(
+            Message("message-22", "chat-5", "Capture another screenshot once the fixed footer is in place.", "周三", false, DeliveryState.SENT),
+            Message("message-23", "chat-5", "Will do after the layout rebuild passes assembleDebug.", "周三", true, DeliveryState.SENT),
+        ),
+        "chat-10" to listOf(
+            Message("message-24", "chat-10", "Need enough rows to force a real scroll region.", "3月08日", false, DeliveryState.SENT),
+        ),
+    )
 }

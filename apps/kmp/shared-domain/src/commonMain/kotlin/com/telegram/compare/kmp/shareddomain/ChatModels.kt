@@ -8,6 +8,9 @@ data class ChatSummary(
     val lastMessageAtLabel: String,
     val avatarLabel: String,
     val isMuted: Boolean = false,
+    val statusLabel: String = "",
+    val avatarBackgroundColorHex: String = "#EAF3FB",
+    val avatarTextColorHex: String = "#1F5F8B",
 )
 
 data class ChatListQuery(

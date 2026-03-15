@@ -68,6 +68,8 @@
 
 - outgoing bubble 右对齐，incoming bubble 左对齐。
 - sending / failed / retrying 状态必须有文字语义。
+- 页面必须撑满设备视口，顶部和 composer 固定，只允许消息流区域滚动。
+- 默认 fixture 至少展示一段可滚动的真实消息历史，而不是只靠 2-3 条消息撑页面。
 - 返回列表后要刷新最近消息预览与排序。
 - debug-only 的 `下一条发送失败` 只用于验收，不计入最终产品交互。
 

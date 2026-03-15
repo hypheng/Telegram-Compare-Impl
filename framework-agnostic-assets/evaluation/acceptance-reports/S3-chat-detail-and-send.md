@@ -12,11 +12,11 @@
 
 | Criterion | Status | Evidence | Notes |
 |---|---|---|---|
-| AC-S3-1 打开聊天详情 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s3-chat-detail-and-send/s3-default-detail.png` | 列表点击进入真实 detail ready |
+| AC-S3-1 打开聊天详情 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s3-chat-detail-and-send/s3-default-detail.png` | 2026-03-15 已重采，详情页现在是固定 top bar + 固定 composer + 中间消息区滚动 |
 | AC-S3-2 消息历史可读 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s3-chat-detail-and-send/s3-default-detail.xml` | 展示 incoming / outgoing bubble、时间和 composer |
-| AC-S3-3 文本发送成功 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s3-chat-detail-and-send/s3-send-success.png` | `KMP_S3` 进入消息流并标记 `已发送` |
-| AC-S3-4 发送失败可感知 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s3-chat-detail-and-send/s3-send-failed.png` | `FAIL2` 进入 failed，并暴露 `重试` |
-| AC-S3-5 重试可恢复 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s3-chat-detail-and-send/s3-retry-success.png` | 原失败消息经 retry 后转为 sent |
+| AC-S3-3 文本发送成功 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s3-chat-detail-and-send/s3-send-success.png` | 2026-03-15 已重采，`KMP_UI_REFRESHm` 已进入消息流并标记 `已发送` |
+| AC-S3-4 发送失败可感知 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s3-chat-detail-and-send/s3-send-failed.png` | 2026-03-15 已重采，`FAIL_UI` 进入 failed，并暴露 `重试` |
+| AC-S3-5 重试可恢复 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s3-chat-detail-and-send/s3-retry-success.png` | 2026-03-15 已重采，原失败消息经 retry 后转为 sent |
 | AC-S3-6 返回列表承接 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s3-chat-detail-and-send/s3-return-to-list.png` | 返回列表后 banner 与首会话预览回写成功 |
 
 ## Platform Status
@@ -36,6 +36,12 @@
   - `cd apps/kmp && ./gradlew :shared-domain:allTests :shared-data:allTests`
   - `cd apps/kmp && ./gradlew :androidApp:assembleDebug`
   - `cd apps/kmp && ./gradlew :androidApp:installDebug`
+  - `cd apps/kmp && ./gradlew :shared-domain:allTests :shared-data:allTests` after viewport refresh
+  - `cd apps/kmp && ./gradlew :androidApp:assembleDebug` after viewport refresh
+  - `adb -s emulator-5554 shell pm clear com.telegram.compare.kmp.android`
+  - `adb -s emulator-5554 shell am start -n com.telegram.compare.kmp.android/.MainActivity`
+  - `adb -s emulator-5554 shell uiautomator dump ...`
+  - `adb -s emulator-5554 exec-out screencap -p ...`
 - Result:
   - all passed
 - Screenshots / videos:
@@ -45,8 +51,8 @@
 
 ## AI Delivery Summary
 
-- Latest log: `2026-03-15-S2-S3-kmp-main-workflow.md`
-- Total sessions: `1`
+- Latest log: `2026-03-15-S1-S3-kmp-secondary-evidence-refresh.md`
+- Total sessions: `4`
 - Human interventions: `0`
 - Open issues:
   - 缺真实 Figma frame/node links

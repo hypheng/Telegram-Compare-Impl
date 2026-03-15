@@ -16,10 +16,10 @@
 |---|---|---|---|
 | AC-S1-1 启动反馈 | accepted | `apps/kmp/androidApp/.../MainActivity.kt` restoring state + `framework-agnostic-assets/evaluation/acceptance-evidence/s1-login-session-restore/README.md` | 在模拟器冷启动和 `重试恢复` 路径上都观察到 restoring 反馈；由于该状态仅持续 `650ms`，未能稳定截到单帧静态图 |
 | AC-S1-2 无会话进入登录 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s1-login-session-restore/login-no-session.png` | 冷启动无会话直接进入登录页 |
-| AC-S1-3 失效会话回退 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s1-login-session-restore/home-debug-seeded.png` + `framework-agnostic-assets/evaluation/acceptance-evidence/s1-login-session-restore/login-restore-failed.png` | 先写入失效会话，再冷启动得到明确错误提示并回到登录页 |
-| AC-S1-4 登录成功进入主壳 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s1-login-session-restore/home-after-login.png` | 历史证据截图采集于 `S2` 落地前；当前实现已直接衔接真实 chat list，但 `S1` 只要求能成功进入主壳 |
-| AC-S1-5 会话可恢复 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s1-login-session-restore/home-restored.png` | 登录成功后冷启动应用，恢复到同一会话 |
-| AC-S1-6 登出清理状态 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s1-login-session-restore/login-logged-out.png` + `framework-agnostic-assets/evaluation/acceptance-evidence/s1-login-session-restore/login-after-logout-cold-start.png` | 登出后回到登录页，随后冷启动也不再自动恢复 |
+| AC-S1-3 失效会话回退 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s1-login-session-restore/home-debug-seeded.png` + `framework-agnostic-assets/evaluation/acceptance-evidence/s1-login-session-restore/login-restore-failed.png` | 2026-03-15 已重采，先写入失效会话，再冷启动得到明确错误提示并回到登录页 |
+| AC-S1-4 登录成功进入主壳 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s1-login-session-restore/home-after-login.png` | 2026-03-15 已重采，登录成功后直接进入真实 chat list 主壳 |
+| AC-S1-5 会话可恢复 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s1-login-session-restore/home-restored.png` | 2026-03-15 已重采，登录成功后冷启动应用，恢复到同一会话 |
+| AC-S1-6 登出清理状态 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s1-login-session-restore/login-logged-out.png` + `framework-agnostic-assets/evaluation/acceptance-evidence/s1-login-session-restore/login-after-logout-cold-start.png` | 2026-03-15 已重采，登出后回到登录页，随后冷启动也不再自动恢复 |
 | S1 Figma backfill brief | implemented | `framework-agnostic-assets/design-evidence/2026-03-15-S1-figma-backfill-brief.md` | 已形成落图说明，但真实 frame/node links 仍待补 |
 
 ## Platform Status
@@ -67,15 +67,14 @@
 
 ## AI Delivery Summary
 
-- Latest log: `framework-agnostic-assets/evaluation/ai-delivery-logs/2026-03-15-S1-cjmp-scope-deferral.md`
-- Total sessions: `4`
+- Latest log: `framework-agnostic-assets/evaluation/ai-delivery-logs/2026-03-15-S1-S3-kmp-secondary-evidence-refresh.md`
+- Total sessions: `7`
 - Human interventions: `2`
 - Open issues:
   - `S1` 还缺真实 Figma frame/node handoff evidence
 
 ## Risks
 
-- `S1` 的历史 acceptance evidence 采集于 `S2/S3` 落地前，和当前 UI 形态并不完全一致，但不会影响 `S1` 的验收结论。
 - `S1` 的 Figma backfill 目前只有 brief，没有真实 frame/node links。
 - 如果后续重新要求双实现对比，CJMP 仍需从切片计划推进到 repo-local 工程和运行证据。
 

@@ -13,12 +13,12 @@
 
 | Criterion | Status | Evidence | Notes |
 |---|---|---|---|
-| AC-S2-1 首次进入列表 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s2-chat-list/s2-default-list.png` | 登录后直接进入真实列表态 |
+| AC-S2-1 首次进入列表 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s2-chat-list/s2-default-list.png` | 2026-03-15 已重采，登录后直接进入 fixed chrome + scoped scroll 的真实列表态 |
 | AC-S2-2 列表信息完整 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s2-chat-list/s2-default-list.xml` | 展示头像、标题、预览、时间和未读数 |
 | AC-S2-3 Telegram 风格层级 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s2-chat-list/s2-default-list.png` | 顶部、搜索、列表和底部承载区已到位 |
-| AC-S2-4 搜索会话 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s2-chat-list/s2-search-result.png`, `framework-agnostic-assets/evaluation/acceptance-evidence/s2-chat-list/s2-search-empty.png` | 同时覆盖命中和无结果空态 |
-| AC-S2-5 下拉刷新 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s2-chat-list/s2-refresh.png` | refresh banner 成功出现，首行未读数更新 |
-| AC-S2-6 空态与错误态 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s2-chat-list/s2-empty-scenario.png`, `framework-agnostic-assets/evaluation/acceptance-evidence/s2-chat-list/s2-error-scenario.png` | fixture empty / error 均有页面级恢复表达 |
+| AC-S2-4 搜索会话 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s2-chat-list/s2-search-result.png`, `framework-agnostic-assets/evaluation/acceptance-evidence/s2-chat-list/s2-search-empty.png` | 2026-03-15 已重采，同时覆盖命中和无结果空态 |
+| AC-S2-5 下拉刷新 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s2-chat-list/s2-refresh.png` | 2026-03-15 已重采，refresh banner 成功出现，首行未读数更新 |
+| AC-S2-6 空态与错误态 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s2-chat-list/s2-empty-scenario.png`, `framework-agnostic-assets/evaluation/acceptance-evidence/s2-chat-list/s2-error-scenario.png` | 2026-03-15 已重采，fixture empty / error 均有页面级恢复表达 |
 | AC-S2-7 进入下一步承接 | accepted | `framework-agnostic-assets/evaluation/acceptance-evidence/s3-chat-detail-and-send/s3-default-detail.png` | 列表点击已进入真实 `S3` 详情 |
 
 ## Platform Status
@@ -38,6 +38,12 @@
   - `cd apps/kmp && ./gradlew :shared-domain:allTests :shared-data:allTests`
   - `cd apps/kmp && ./gradlew :androidApp:assembleDebug`
   - `cd apps/kmp && ./gradlew :androidApp:installDebug`
+  - `cd apps/kmp && ./gradlew :shared-domain:allTests :shared-data:allTests` after viewport refresh
+  - `cd apps/kmp && ./gradlew :androidApp:assembleDebug` after viewport refresh
+  - `adb -s emulator-5554 shell pm clear com.telegram.compare.kmp.android`
+  - `adb -s emulator-5554 shell am start -n com.telegram.compare.kmp.android/.MainActivity`
+  - `adb -s emulator-5554 shell uiautomator dump ...`
+  - `adb -s emulator-5554 exec-out screencap -p ...`
 - Result:
   - all passed
 - Screenshots / videos:
@@ -47,8 +53,8 @@
 
 ## AI Delivery Summary
 
-- Latest log: `2026-03-15-S2-S3-kmp-main-workflow.md`
-- Total sessions: `1`
+- Latest log: `2026-03-15-S1-S3-kmp-secondary-evidence-refresh.md`
+- Total sessions: `4`
 - Human interventions: `0`
 - Open issues:
   - 缺真实 Figma frame/node links

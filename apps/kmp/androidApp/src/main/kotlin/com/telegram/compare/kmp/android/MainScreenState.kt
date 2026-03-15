@@ -25,6 +25,7 @@ sealed interface MainScreenState {
         val session: UserSession,
         val chatId: String,
         val chatTitle: String,
+        val chatSubtitle: String,
         val statusMessage: String? = null,
         val contentState: ChatDetailContentState = ChatDetailContentState.Loading,
         val composerDraft: String = "",
