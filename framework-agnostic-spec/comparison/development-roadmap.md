@@ -13,7 +13,7 @@
 
 - `S1-S4` 的 KMP 核心聊天工作流已完成代码、构建和设备验收
 - `S1-S4` 的 Figma handoff 仍因缺少可编辑文件而未闭环
-- `S1-S4` 的 CJMP 仍按当前范围保持 deferred
+- `S1` 的 CJMP 已通过 self-render 等价证据完成 `E1`，`S2-S4` 仍保持 deferred
 - 下一条是否继续推进 `S5-S8 backlog`，取决于产品范围决策，而不是 KMP 主路径未完成
 
 ## 分阶段路线
@@ -31,7 +31,7 @@
 
 | Slice | 当前阶段 | Design 门槛 | Implementation 门槛 | 当前备注 |
 |---|---|---|---|---|
-| `S1` 登录与会话恢复 | `E1` 已完成，`D2` blocked，`I2` deferred | 已有 repo 内 UI 定义和 backfill brief，但缺真实 Figma file / frame links | KMP 已验收；CJMP 当前不作为闭环要求 | 这是一个 backfill 特例，不应成为后续切片默认方式 |
+| `S1` 登录与会话恢复 | `E1(KMP/CJMP)` 已完成，`D2` blocked | 已有 repo 内 UI 定义和 backfill brief，但缺真实 Figma file / frame links | KMP 与 CJMP 均已验收；CJMP 使用 `keels` app shell、app-lib 内联会话逻辑、app-private snapshot 和 self-render 等价证据闭合 `S1` | 这是一个 backfill 特例，不应成为后续切片默认方式 |
 | `S2` 会话列表 | `E1` 已完成，`D2` blocked，`I2` deferred | 已有 repo 内 UI 定义和 handoff brief，但缺真实 Figma file / frame links | KMP 已验收；CJMP 当前不作为闭环要求 | 设备侧已完成 default / search / refresh / empty / error 验收 |
 | `S3` 单聊详情与文本发送 | `E1` 已完成，`D2` blocked，`I2` deferred | 已有 repo 内 UI 定义和 handoff brief，但缺真实 Figma file / frame links | KMP 已验收；CJMP 当前不作为闭环要求 | KMP 主用户工作流现已从登录贯通到详情发送 |
 | `S4` 本地缓存与离线恢复 | `E1` 已完成，`D2` blocked，`I2` deferred | 已有 repo 内 UI 定义和 handoff brief，但缺真实 Figma file / frame links | KMP 已验收；CJMP 当前不作为闭环要求 | KMP 现已具备列表/详情 snapshot 恢复、清空缓存回退和 logout 清缓存路径 |
@@ -45,6 +45,7 @@
 | `shared-domain` | `UserSession`、`SessionRestoreResult`、`LoginResult`、use cases | 共享测试覆盖成功、无平台专有状态 |
 | `shared-data` | mock `SessionRepository`、会话持久化边界、测试桩 | 可验证 restore / login / logout / expired-session |
 | `androidApp` | 启动恢复页、登录页、主壳入口页 | 已完成 AC-S1-1 到 AC-S1-6 的模拟器验收 |
+| `apps/cjmp` | `keels` app shell、app-lib 会话逻辑、`S1` 设备证据 | 已完成 `keels build apk`、`keels run`、无会话 / 登录 / 恢复 / 失效 / 登出全路径截图，并记录 root-only UI tree 限制 |
 | evaluation assets | acceptance report、AI log、parity matrix | 已有 acceptance evidence、AI log 和 parity 记录 |
 
 ## 执行原则
