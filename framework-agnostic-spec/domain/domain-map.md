@@ -10,6 +10,7 @@
 | Sync | 拉取、增量更新、缓存恢复 | `SyncCursor`, `SyncSnapshot` |
 | Search | 会话 / 消息检索 | `SearchQuery`, `SearchResult` |
 | Settings | 偏好项、主题、实验开关 | `UserPreference`, `FeatureFlag` |
+| Contacts | 联系人浏览、检索和发起会话 | `ContactSummary`, `ContactHandle`, `ContactChatLaunch` |
 | AI Overlay | AI 助手入口、上下文、结果展示 | `AiIntent`, `AiOutput`, `AiTrace` |
 
 ## 关键事件
@@ -26,6 +27,8 @@
 - `SearchSubmitted`
 - `SettingsOpened`
 - `PreferenceChanged`
+- `ContactsOpened`
+- `ContactChatStarted`
 - `MediaPickerOpened`
 - `MediaMessageSent`
 - `AiActionTriggered`
@@ -93,6 +96,14 @@
 - `SendMediaResult`: `Success`、`Failed`
 - `Message`: 扩展可选媒体负载
 - `ChatDetailRepository`: 扩展媒体选择与发送边界
+
+## S8 补充对象
+
+- `ContactSummary`: 联系人列表的轻量展示对象
+- `ContactsQuery`: 联系人搜索关键词
+- `ContactsLoadResult`: `Success`、`Empty`、`Failed`
+- `OpenContactChatResult`: `Success`、`Failed`
+- `ContactsRepository`: 联系人加载、搜索和发起聊天边界
 
 ### 会话列表
 

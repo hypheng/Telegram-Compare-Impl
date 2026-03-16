@@ -12,6 +12,7 @@
 | UI-S6 | Settings / Profile | 管理资料与偏好 | loading, ready, failed |
 | UI-S7 | AI Overlay | 展示 AI summary / draft / todo | closed, loading, ready, failed |
 | UI-S8 | Media Picker Sheet | 选择并发送 fixture 图片 | closed, loading, ready, failed |
+| UI-S9 | Contacts | 浏览、搜索联系人并发起聊天 | loading, ready, empty, failed |
 
 ## 关键屏幕的 Telegram 风格约束
 
@@ -67,6 +68,24 @@
 - 设置页延续 Telegram 的轻量分组设置风格，而不是调试控制台
 - profile hero、偏好行和危险操作分组要清晰，但保持克制的白底 + 细边框语义
 - 页面撑满视口，顶部和底部导航固定，只有内容区滚动
+
+### UI-S9 Contacts
+
+- 视觉目标:
+  - 接近 Telegram 当前联系人页的轻量顶部、平面列表和高密度 row 结构
+  - 联系人列表应该看起来是 Telegram 主壳的一部分，而不是第二套通讯录应用
+- 顶部结构:
+  - 中心标题 `Contacts`
+  - 搜索框固定在标题区下方
+  - 允许轻量 `Add` 占位，但不能盖过主列表
+- 列表结构:
+  - 白底平面列表
+  - 圆形头像 + 姓名 + 状态/手机号
+  - 已有聊天和“将创建新聊天”的联系人不应使用重卡片分割
+- 布局边界:
+  - 页面撑满视口
+  - 顶部和底部导航固定
+  - 只有联系人列表 viewport 滚动
 
 ### UI-S8 Media Picker Sheet
 
@@ -127,3 +146,9 @@
 - 设计 handoff: `framework-agnostic-spec/interface-design/s7-media-messages.md`
 - 涉及屏幕: `UI-S4`、`UI-S8`
 - 范围说明: 在聊天详情中增加图片消息与 media picker，不扩展到真实相册权限和复杂媒体浏览
+
+### S8 Contacts 联系人
+
+- 设计 handoff: `framework-agnostic-spec/interface-design/s8-contacts.md`
+- 涉及屏幕: `UI-S9`、`UI-S4`
+- 范围说明: 覆盖联系人列表、搜索、打开已有聊天和创建新聊天；不扩展到真实系统通讯录权限和邀请非 Telegram 用户

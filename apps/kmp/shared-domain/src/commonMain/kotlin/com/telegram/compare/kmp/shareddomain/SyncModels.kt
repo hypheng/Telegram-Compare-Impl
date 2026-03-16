@@ -17,6 +17,16 @@ data class SyncSnapshot(
     val selectedChatId: String? = null,
     val chats: List<ChatSummary>,
     val threads: List<ChatThread>,
+    val contacts: List<ContactSnapshot> = emptyList(),
+)
+
+data class ContactSnapshot(
+    val id: String,
+    val displayName: String,
+    val phoneNumber: String,
+    val avatarLabel: String,
+    val statusLabel: String = "",
+    val linkedChatId: String? = null,
 )
 
 sealed interface SyncSnapshotRestoreResult {

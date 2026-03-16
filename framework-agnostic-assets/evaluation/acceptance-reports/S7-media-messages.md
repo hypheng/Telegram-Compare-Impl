@@ -64,4 +64,4 @@
 
 ## Next Step
 
-- `S7` on KMP 已 accepted。KMP 主路径现已覆盖 `S1-S7`；剩余 backlog 为 `S8 AI 助手增强能力`。
+- `S7` on KMP 已 accepted。下一切片是 `S8 Contacts 联系人`，随后才进入 `S9 AI 助手增强能力` backlog。

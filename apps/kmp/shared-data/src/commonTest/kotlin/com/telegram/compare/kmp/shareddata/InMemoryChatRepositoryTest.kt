@@ -2,8 +2,10 @@ package com.telegram.compare.kmp.shareddata
 
 import com.telegram.compare.kmp.shareddomain.ChatDetailLoadResult
 import com.telegram.compare.kmp.shareddomain.ChatListLoadResult
+import com.telegram.compare.kmp.shareddomain.ContactsLoadResult
 import com.telegram.compare.kmp.shareddomain.DeliveryState
 import com.telegram.compare.kmp.shareddomain.MediaPickerLoadResult
+import com.telegram.compare.kmp.shareddomain.OpenContactChatResult
 import com.telegram.compare.kmp.shareddomain.RetryMessageResult
 import com.telegram.compare.kmp.shareddomain.SearchLoadResult
 import com.telegram.compare.kmp.shareddomain.SearchQuery
@@ -216,5 +218,33 @@ class InMemoryChatRepositoryTest {
         assertIs<ChatDetailLoadResult.Success>(detail)
         assertTrue(detail.thread.messages.any { it.mediaAttachment?.id == "media-1" })
         assertTrue(detail.thread.chat.lastMessagePreview.contains("Photo"))
+    }
+
+    @Test
+    fun restoresContactChatStateAlongsideSavedSnapshot() {
+        val storage = InMemorySyncSnapshotStorage()
+        val firstBundle = InMemoryChatFixtureBundle(snapshotStorage = storage)
+
+        firstBundle.contactsRepository.openContactChat("contact-6")
+
+        val saved = firstBundle.syncRepository.saveSnapshot(
+            SyncSnapshotRequest(
+                route = SyncSnapshotRoute.CHAT_LIST,
+            ),
+        )
+
+        assertIs<SyncSnapshotSaveResult.Success>(saved)
+
+        val restoredBundle = InMemoryChatFixtureBundle(snapshotStorage = storage)
+        val restored = restoredBundle.syncRepository.restoreSnapshot()
+        val contacts = restoredBundle.contactsRepository.loadContacts()
+        val reopened = restoredBundle.contactsRepository.openContactChat("contact-6")
+
+        assertIs<SyncSnapshotRestoreResult.Restored>(restored)
+        assertIs<ContactsLoadResult.Success>(contacts)
+        assertTrue(contacts.contacts.first { it.id == "contact-6" }.hasExistingChat)
+        assertIs<OpenContactChatResult.Success>(reopened)
+        assertEquals(false, reopened.isNewChat)
+        assertEquals("Sam Rivera", reopened.chat.title)
     }
 }

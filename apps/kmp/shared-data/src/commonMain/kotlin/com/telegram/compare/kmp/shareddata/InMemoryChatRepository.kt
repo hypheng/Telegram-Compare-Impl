@@ -7,11 +7,17 @@ import com.telegram.compare.kmp.shareddomain.ChatListQuery
 import com.telegram.compare.kmp.shareddomain.ChatListRepository
 import com.telegram.compare.kmp.shareddomain.ChatSummary
 import com.telegram.compare.kmp.shareddomain.ChatThread
+import com.telegram.compare.kmp.shareddomain.ContactSummary
+import com.telegram.compare.kmp.shareddomain.ContactsLoadResult
+import com.telegram.compare.kmp.shareddomain.ContactsQuery
+import com.telegram.compare.kmp.shareddomain.ContactsRepository
+import com.telegram.compare.kmp.shareddomain.ContactSnapshot
 import com.telegram.compare.kmp.shareddomain.DeliveryState
 import com.telegram.compare.kmp.shareddomain.MediaAttachment
 import com.telegram.compare.kmp.shareddomain.MediaPickerLoadResult
 import com.telegram.compare.kmp.shareddomain.Message
 import com.telegram.compare.kmp.shareddomain.MessageSearchHit
+import com.telegram.compare.kmp.shareddomain.OpenContactChatResult
 import com.telegram.compare.kmp.shareddomain.RetryMessageResult
 import com.telegram.compare.kmp.shareddomain.SearchLoadResult
 import com.telegram.compare.kmp.shareddomain.SearchQuery
@@ -31,6 +37,12 @@ enum class ChatListScenario {
     ERROR,
 }
 
+enum class ContactListScenario {
+    DEFAULT,
+    EMPTY,
+    ERROR,
+}
+
 class InMemoryChatFixtureBundle(
     snapshotStorage: SyncSnapshotStorage = InMemorySyncSnapshotStorage(),
 ) {
@@ -38,6 +50,7 @@ class InMemoryChatFixtureBundle(
 
     val chatListRepository: ChatListRepository = InMemoryChatListRepository(store)
     val chatDetailRepository: ChatDetailRepository = InMemoryChatDetailRepository(store)
+    val contactsRepository: ContactsRepository = InMemoryContactsRepository(store)
     val searchRepository: SearchRepository = InMemorySearchRepository(store)
     val syncRepository: SyncRepository = InMemorySyncRepository(store)
     val debugController = InMemoryChatDebugController(store)
@@ -51,6 +64,16 @@ class InMemoryChatDebugController internal constructor(
     }
 
     fun currentChatListScenario(): ChatListScenario = store.currentChatListScenario()
+
+    fun setContactListScenario(next: ContactListScenario) {
+        store.setContactListScenario(next)
+    }
+
+    fun currentContactListScenario(): ContactListScenario = store.currentContactListScenario()
+
+    fun restoreDefaultContactScenario() {
+        store.restoreDefaultContactScenario()
+    }
 
     fun restoreDefaultFixtures() {
         store.restoreDefaultFixtures()
@@ -94,6 +117,14 @@ private class InMemoryChatDetailRepository(
     ): SendMediaResult = store.sendMedia(chatId, mediaId)
 }
 
+private class InMemoryContactsRepository(
+    private val store: InMemoryChatStore,
+) : ContactsRepository {
+    override fun loadContacts(query: ContactsQuery): ContactsLoadResult = store.loadContacts(query)
+
+    override fun openContactChat(contactId: String): OpenContactChatResult = store.openContactChat(contactId)
+}
+
 private class InMemorySearchRepository(
     private val store: InMemoryChatStore,
 ) : SearchRepository {
@@ -124,7 +155,9 @@ internal class InMemoryChatStore(
 ) {
     private val availableMedia = buildAvailableMedia()
     private val chats = buildDefaultChats().toMutableList()
+    private val contacts = buildDefaultContacts().toMutableList()
     private var chatListScenario: ChatListScenario = ChatListScenario.DEFAULT
+    private var contactListScenario: ContactListScenario = ContactListScenario.DEFAULT
     private var refreshCount = 0
     private var nextSendShouldFail = false
     private var messageCounter = DEFAULT_MESSAGE_COUNTER
@@ -167,6 +200,21 @@ internal class InMemoryChatStore(
             ?: ChatDetailLoadResult.Failed("未找到该会话。")
     }
 
+    fun loadContacts(query: ContactsQuery): ContactsLoadResult {
+        return when (contactListScenario) {
+            ContactListScenario.ERROR -> ContactsLoadResult.Failed("联系人加载失败，请稍后重试。")
+            ContactListScenario.EMPTY -> ContactsLoadResult.Empty
+            ContactListScenario.DEFAULT -> {
+                val results = filterContacts(query.keyword)
+                if (results.isEmpty()) {
+                    ContactsLoadResult.Empty
+                } else {
+                    ContactsLoadResult.Success(results)
+                }
+            }
+        }
+    }
+
     fun search(query: SearchQuery): SearchLoadResult {
         return when (chatListScenario) {
             ChatListScenario.ERROR -> SearchLoadResult.Failed("搜索暂不可用，请稍后重试。")
@@ -202,6 +250,51 @@ internal class InMemoryChatStore(
                 }
             }
         }
+    }
+
+    fun openContactChat(contactId: String): OpenContactChatResult {
+        val contactIndex = contacts.indexOfFirst { it.id == contactId }
+        if (contactIndex == -1) {
+            return OpenContactChatResult.Failed("未找到目标联系人。")
+        }
+
+        val contact = contacts[contactIndex]
+        val existingChatId = contact.linkedChatId
+        if (existingChatId != null) {
+            val chat = chats.firstOrNull { it.id == existingChatId }
+                ?: return OpenContactChatResult.Failed("未找到联系人对应的会话。")
+            return OpenContactChatResult.Success(
+                chat = chat,
+                isNewChat = false,
+            )
+        }
+
+        val newChat = ChatSummary(
+            id = "chat-contact-${contact.id}",
+            title = contact.displayName,
+            lastMessagePreview = "Hi, this chat started from Contacts.",
+            unreadCount = 0,
+            lastMessageAtLabel = "刚刚",
+            avatarLabel = contact.avatarLabel,
+            statusLabel = contact.statusLabel.ifBlank { "last seen recently" },
+        )
+        val initialMessage = Message(
+            id = nextMessageId(),
+            chatId = newChat.id,
+            text = "Hi, this chat started from Contacts.",
+            sentAtLabel = "刚刚",
+            isOutgoing = false,
+            deliveryState = DeliveryState.SENT,
+        )
+
+        chats.add(0, newChat)
+        messagesByChat[newChat.id] = mutableListOf(initialMessage)
+        contacts[contactIndex] = contact.copy(linkedChatId = newChat.id)
+
+        return OpenContactChatResult.Success(
+            chat = newChat,
+            isNewChat = true,
+        )
     }
 
     fun sendMessage(
@@ -358,6 +451,7 @@ internal class InMemoryChatStore(
             selectedChatId = normalizedChatId,
             chats = chats.toList(),
             threads = chats.mapNotNull { chat -> resolveThread(chat.id) },
+            contacts = contacts.map(ContactFixture::toSnapshot),
         )
         snapshotStorage.write(snapshot)
         return SyncSnapshotSaveResult.Success(snapshot)
@@ -373,15 +467,28 @@ internal class InMemoryChatStore(
 
     fun currentChatListScenario(): ChatListScenario = chatListScenario
 
+    fun setContactListScenario(next: ContactListScenario) {
+        contactListScenario = next
+    }
+
+    fun currentContactListScenario(): ContactListScenario = contactListScenario
+
+    fun restoreDefaultContactScenario() {
+        contactListScenario = ContactListScenario.DEFAULT
+    }
+
     fun restoreDefaultFixtures() {
         chats.clear()
         chats += buildDefaultChats()
+        contacts.clear()
+        contacts += buildDefaultContacts()
         messagesByChat.clear()
         messagesByChat.putAll(
             buildDefaultMessages()
                 .mapValues { (_, messages) -> messages.toMutableList() },
         )
         chatListScenario = ChatListScenario.DEFAULT
+        contactListScenario = ContactListScenario.DEFAULT
         refreshCount = 0
         nextSendShouldFail = false
         messageCounter = DEFAULT_MESSAGE_COUNTER
@@ -401,6 +508,9 @@ internal class InMemoryChatStore(
         chats.clear()
         chats += snapshot.chats
 
+        contacts.clear()
+        contacts += restoreContacts(snapshot)
+
         messagesByChat.clear()
         snapshot.threads.forEach { thread ->
             messagesByChat[thread.chat.id] = thread.messages.toMutableList()
@@ -415,6 +525,7 @@ internal class InMemoryChatStore(
         }
 
         chatListScenario = ChatListScenario.DEFAULT
+        contactListScenario = ContactListScenario.DEFAULT
         refreshCount = 0
         nextSendShouldFail = false
         messageCounter = snapshot.threads
@@ -435,6 +546,35 @@ internal class InMemoryChatStore(
         return chats.filter { chat ->
             chat.title.contains(normalized, ignoreCase = true) ||
                 chat.lastMessagePreview.contains(normalized, ignoreCase = true)
+        }
+    }
+
+    private fun filterContacts(keyword: String): List<ContactSummary> {
+        if (keyword.isBlank()) {
+            return contacts.map(ContactFixture::toSummary)
+        }
+
+        val normalized = keyword.trim()
+        return contacts
+            .filter { contact ->
+                contact.displayName.contains(normalized, ignoreCase = true) ||
+                    contact.phoneNumber.contains(normalized, ignoreCase = true)
+            }.map(ContactFixture::toSummary)
+    }
+
+    private fun restoreContacts(snapshot: SyncSnapshot): List<ContactFixture> {
+        if (snapshot.contacts.isNotEmpty()) {
+            return snapshot.contacts.map(ContactSnapshot::toFixture)
+        }
+
+        val availableChatIds = snapshot.chats.map(ChatSummary::id).toSet()
+        return buildDefaultContacts().map { contact ->
+            val restoredChatId = when {
+                contact.linkedChatId != null && availableChatIds.contains(contact.linkedChatId) -> contact.linkedChatId
+                availableChatIds.contains(contact.generatedChatId()) -> contact.generatedChatId()
+                else -> null
+            }
+            contact.copy(linkedChatId = restoredChatId)
         }
     }
 
@@ -500,6 +640,50 @@ internal class InMemoryChatStore(
     private companion object {
         const val DEFAULT_MESSAGE_COUNTER = 24
     }
+}
+
+private data class ContactFixture(
+    val id: String,
+    val displayName: String,
+    val phoneNumber: String,
+    val avatarLabel: String,
+    val statusLabel: String,
+    val linkedChatId: String?,
+) {
+    fun toSummary(): ContactSummary {
+        return ContactSummary(
+            id = id,
+            displayName = displayName,
+            phoneNumber = phoneNumber,
+            avatarLabel = avatarLabel,
+            statusLabel = statusLabel,
+            hasExistingChat = linkedChatId != null,
+        )
+    }
+
+    fun toSnapshot(): ContactSnapshot {
+        return ContactSnapshot(
+            id = id,
+            displayName = displayName,
+            phoneNumber = phoneNumber,
+            avatarLabel = avatarLabel,
+            statusLabel = statusLabel,
+            linkedChatId = linkedChatId,
+        )
+    }
+
+    fun generatedChatId(): String = "chat-contact-$id"
+}
+
+private fun ContactSnapshot.toFixture(): ContactFixture {
+    return ContactFixture(
+        id = id,
+        displayName = displayName,
+        phoneNumber = phoneNumber,
+        avatarLabel = avatarLabel,
+        statusLabel = statusLabel,
+        linkedChatId = linkedChatId,
+    )
 }
 
 private fun buildDefaultChats(): List<ChatSummary> {
@@ -614,6 +798,75 @@ private fun buildAvailableMedia(): List<MediaAttachment> {
             id = "media-3",
             title = "Delivery board",
             defaultCaption = "Media picker board for the S7 acceptance path.",
+        ),
+    )
+}
+
+private fun buildDefaultContacts(): List<ContactFixture> {
+    return listOf(
+        ContactFixture(
+            id = "contact-1",
+            displayName = "Telegram Compare",
+            phoneNumber = "+86 138 0000 0101",
+            avatarLabel = "TC",
+            statusLabel = "last seen recently",
+            linkedChatId = "chat-1",
+        ),
+        ContactFixture(
+            id = "contact-2",
+            displayName = "AI Infra",
+            phoneNumber = "+86 138 0000 0102",
+            avatarLabel = "AI",
+            statusLabel = "syncing logs",
+            linkedChatId = "chat-2",
+        ),
+        ContactFixture(
+            id = "contact-3",
+            displayName = "Product Design",
+            phoneNumber = "+86 138 0000 0103",
+            avatarLabel = "PD",
+            statusLabel = "reviewing handoff",
+            linkedChatId = "chat-3",
+        ),
+        ContactFixture(
+            id = "contact-4",
+            displayName = "QA Evidence",
+            phoneNumber = "+86 138 0000 0104",
+            avatarLabel = "QA",
+            statusLabel = "online",
+            linkedChatId = "chat-5",
+        ),
+        ContactFixture(
+            id = "contact-5",
+            displayName = "Nora Chen",
+            phoneNumber = "+86 138 0000 0105",
+            avatarLabel = "NC",
+            statusLabel = "online",
+            linkedChatId = null,
+        ),
+        ContactFixture(
+            id = "contact-6",
+            displayName = "Sam Rivera",
+            phoneNumber = "+86 138 0000 0106",
+            avatarLabel = "SR",
+            statusLabel = "last seen 10m ago",
+            linkedChatId = null,
+        ),
+        ContactFixture(
+            id = "contact-7",
+            displayName = "Mia Zhou",
+            phoneNumber = "+86 138 0000 0107",
+            avatarLabel = "MZ",
+            statusLabel = "last seen 1h ago",
+            linkedChatId = null,
+        ),
+        ContactFixture(
+            id = "contact-8",
+            displayName = "Mock Data Lab",
+            phoneNumber = "+86 138 0000 0108",
+            avatarLabel = "MD",
+            statusLabel = "fixture owner",
+            linkedChatId = "chat-10",
         ),
     )
 }
