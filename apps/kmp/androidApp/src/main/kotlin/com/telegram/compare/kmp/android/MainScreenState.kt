@@ -2,11 +2,13 @@ package com.telegram.compare.kmp.android
 
 import com.telegram.compare.kmp.shareddomain.ChatThread
 import com.telegram.compare.kmp.shareddomain.ChatSummary
+import com.telegram.compare.kmp.shareddomain.ContactSummary
 import com.telegram.compare.kmp.shareddomain.MediaAttachment
 import com.telegram.compare.kmp.shareddomain.MessageSearchHit
 import com.telegram.compare.kmp.shareddomain.SettingsSnapshot
 import com.telegram.compare.kmp.shareddomain.UserSession
 import com.telegram.compare.kmp.shareddata.ChatListScenario
+import com.telegram.compare.kmp.shareddata.ContactListScenario
 
 sealed interface MainScreenState {
     object Restoring : MainScreenState
@@ -36,6 +38,14 @@ sealed interface MainScreenState {
         val contentState: SearchContentState = SearchContentState.Idle,
     ) : MainScreenState
 
+    data class Contacts(
+        val session: UserSession,
+        val searchDraft: String = "",
+        val statusMessage: String? = null,
+        val contentState: ContactsContentState = ContactsContentState.Loading,
+        val debugScenario: ContactListScenario = ContactListScenario.DEFAULT,
+    ) : MainScreenState
+
     data class Settings(
         val session: UserSession,
         val statusMessage: String? = null,
@@ -55,6 +65,7 @@ sealed interface MainScreenState {
         val nextSendWillFail: Boolean = false,
         val highlightedMessageId: String? = null,
         val returnToSearch: SearchReturnState? = null,
+        val returnToContacts: ContactsReturnState? = null,
         val mediaPickerState: MediaPickerState = MediaPickerState.Closed,
     ) : MainScreenState
 }
@@ -63,6 +74,12 @@ data class SearchReturnState(
     val queryDraft: String,
     val statusMessage: String? = null,
     val contentState: SearchContentState = SearchContentState.Idle,
+)
+
+data class ContactsReturnState(
+    val searchDraft: String,
+    val statusMessage: String? = null,
+    val contentState: ContactsContentState = ContactsContentState.Loading,
 )
 
 sealed interface ChatListContentState {
@@ -102,6 +119,19 @@ sealed interface SearchContentState {
     ) : SearchContentState
 
     data class Error(val message: String) : SearchContentState
+}
+
+sealed interface ContactsContentState {
+    object Loading : ContactsContentState
+
+    data class Ready(val contacts: List<ContactSummary>) : ContactsContentState
+
+    data class Empty(
+        val title: String,
+        val body: String,
+    ) : ContactsContentState
+
+    data class Error(val message: String) : ContactsContentState
 }
 
 sealed interface SettingsContentState {

@@ -46,4 +46,5 @@
 
 - `S7` on KMP 已 accepted
 - 当前 `S1-S7` 的 KMP 主路径已覆盖文本与图片消息
-- 剩余 backlog 只剩 `S8 AI 助手增强能力`
+- 下一切片是 `S8 Contacts 联系人`
+- 当前剩余 backlog 只剩 `S9 AI 助手增强能力`

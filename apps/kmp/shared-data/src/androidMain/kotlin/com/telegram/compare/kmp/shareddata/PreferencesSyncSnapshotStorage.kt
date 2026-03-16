@@ -4,6 +4,7 @@ import android.content.SharedPreferences
 import android.util.Log
 import com.telegram.compare.kmp.shareddomain.ChatSummary
 import com.telegram.compare.kmp.shareddomain.ChatThread
+import com.telegram.compare.kmp.shareddomain.ContactSnapshot
 import com.telegram.compare.kmp.shareddomain.DeliveryState
 import com.telegram.compare.kmp.shareddomain.MediaAttachment
 import com.telegram.compare.kmp.shareddomain.Message
@@ -50,6 +51,7 @@ private fun SyncSnapshot.toJson(): JSONObject {
         .put("selectedChatId", selectedChatId)
         .put("chats", JSONArray().apply { chats.forEach { put(it.toJson()) } })
         .put("threads", JSONArray().apply { threads.forEach { put(it.toJson()) } })
+        .put("contacts", JSONArray().apply { contacts.forEach { put(it.toJson()) } })
 }
 
 private fun String.toSyncSnapshot(): SyncSnapshot {
@@ -60,6 +62,7 @@ private fun String.toSyncSnapshot(): SyncSnapshot {
         selectedChatId = root.optString("selectedChatId", "").ifBlank { null },
         chats = root.optJSONArray("chats")?.toChatSummaryList().orEmpty(),
         threads = root.optJSONArray("threads")?.toChatThreadList().orEmpty(),
+        contacts = root.optJSONArray("contacts")?.toContactSnapshotList().orEmpty(),
     )
 }
 
@@ -83,6 +86,14 @@ private fun JSONArray.toChatThreadList(): List<ChatThread> {
     return buildList(length()) {
         for (index in 0 until length()) {
             add(getJSONObject(index).toChatThread())
+        }
+    }
+}
+
+private fun JSONArray.toContactSnapshotList(): List<ContactSnapshot> {
+    return buildList(length()) {
+        for (index in 0 until length()) {
+            add(getJSONObject(index).toContactSnapshot())
         }
     }
 }
@@ -177,4 +188,25 @@ private fun MediaAttachment.toJson(): JSONObject {
         .put("id", id)
         .put("title", title)
         .put("defaultCaption", defaultCaption)
+}
+
+private fun JSONObject.toContactSnapshot(): ContactSnapshot {
+    return ContactSnapshot(
+        id = optString("id", ""),
+        displayName = optString("displayName", ""),
+        phoneNumber = optString("phoneNumber", ""),
+        avatarLabel = optString("avatarLabel", "TG"),
+        statusLabel = optString("statusLabel", ""),
+        linkedChatId = optString("linkedChatId", "").ifBlank { null },
+    )
+}
+
+private fun ContactSnapshot.toJson(): JSONObject {
+    return JSONObject()
+        .put("id", id)
+        .put("displayName", displayName)
+        .put("phoneNumber", phoneNumber)
+        .put("avatarLabel", avatarLabel)
+        .put("statusLabel", statusLabel)
+        .put("linkedChatId", linkedChatId)
 }

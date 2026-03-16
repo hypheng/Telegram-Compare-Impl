@@ -22,7 +22,8 @@
 | S5 | 搜索会话 / 消息 | P1 | 支持基础搜索，结果可跳转 |
 | S6 | 设置与个人资料 | P1 | 支持查看基础资料和偏好项 |
 | S7 | 媒体消息 | P2 | 支持图片消息的展示与发送 |
-| S8 | AI 助手增强能力 | P2 | 至少有一个 AI 场景用于展示“AI 生成商用品”的潜力 |
+| S8 | Contacts 联系人 | P2 | 支持浏览联系人、搜索联系人并从联系人发起聊天 |
+| S9 | AI 助手增强能力 | P2 | 至少有一个 AI 场景用于展示“AI 生成商用品”的潜力 |
 
 ## 已细化切片
 
@@ -33,6 +34,7 @@
 - `S5 搜索会话 / 消息`: 详见 `framework-agnostic-spec/requirements/s5-search-chats-and-messages.md`
 - `S6 设置与个人资料`: 详见 `framework-agnostic-spec/requirements/s6-settings-and-profile.md`
 - `S7 媒体消息`: 详见 `framework-agnostic-spec/requirements/s7-media-messages.md`
+- `S8 Contacts 联系人`: 详见 `framework-agnostic-spec/requirements/s8-contacts.md`
 
 ## 非功能要求
 

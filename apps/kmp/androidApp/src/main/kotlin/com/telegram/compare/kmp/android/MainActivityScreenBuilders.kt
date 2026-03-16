@@ -16,6 +16,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import com.telegram.compare.kmp.shareddomain.ChatSummary
+import com.telegram.compare.kmp.shareddomain.ContactSummary
 import com.telegram.compare.kmp.shareddomain.DeliveryState
 import com.telegram.compare.kmp.shareddomain.MediaAttachment
 import com.telegram.compare.kmp.shareddomain.Message
@@ -23,6 +24,7 @@ import com.telegram.compare.kmp.shareddomain.MessageSearchHit
 import com.telegram.compare.kmp.shareddomain.SettingsSnapshot
 import com.telegram.compare.kmp.shareddomain.UserPreference
 import com.telegram.compare.kmp.shareddata.ChatListScenario
+import com.telegram.compare.kmp.shareddata.ContactListScenario
 
 internal fun MainActivity.buildRestoringScreen(): View {
     val root = screenRoot(
@@ -195,7 +197,7 @@ internal fun MainActivity.buildChatListScreen(state: MainScreenState.ChatList): 
                 emptyStateCard(
                     title = content.title,
                     body = content.body,
-                    primaryText = if (state.searchDraft.isBlank()) "恢复默认数据" else "清除搜索",
+                    primaryText = if (state.searchDraft.isBlank()) "恢复联系人" else "清除搜索",
                     onPrimaryClick = {
                         if (state.searchDraft.isBlank()) {
                             switchScenario(ChatListScenario.DEFAULT)
@@ -337,6 +339,88 @@ internal fun MainActivity.buildSearchScreen(state: MainScreenState.Search): View
     )
     root.addView(space(8))
     root.addView(bottomNavigation(selectedTab = MainActivity.RootTab.CHATS))
+
+    return root
+}
+
+internal fun MainActivity.buildContactsScreen(state: MainScreenState.Contacts): View {
+    val root = screenRoot(
+        horizontalPaddingDp = 16,
+        topPaddingDp = 10,
+        bottomPaddingDp = 12,
+    )
+
+    root.addView(contactsTopBar())
+    root.addView(space(8))
+    root.addView(contactsSearchBar(state))
+    state.statusMessage?.let {
+        root.addView(space(8))
+        root.addView(infoBanner(it))
+    }
+    root.addView(space(8))
+    root.addView(thinDivider())
+    root.addView(space(4))
+
+    val listContent = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(0, dp(2), 0, dp(10))
+    }
+
+    when (val content = state.contentState) {
+        ContactsContentState.Loading -> {
+            repeat(5) { index ->
+                listContent.addView(contactSkeletonRow())
+                if (index < 4) {
+                    listContent.addView(thinDivider())
+                }
+            }
+        }
+        is ContactsContentState.Ready -> {
+            content.contacts.forEachIndexed { index, contact ->
+                listContent.addView(contactRow(contact))
+                if (index < content.contacts.lastIndex) {
+                    listContent.addView(thinDivider())
+                }
+            }
+        }
+        is ContactsContentState.Empty -> {
+            listContent.addView(
+                emptyStateCard(
+                    title = content.title,
+                    body = content.body,
+                    primaryText = if (state.searchDraft.isBlank()) "恢复默认数据" else "清除搜索",
+                    onPrimaryClick = {
+                        if (state.searchDraft.isBlank()) {
+                            switchContactScenario(ContactListScenario.DEFAULT)
+                        } else {
+                            clearContactsSearch()
+                        }
+                    },
+                ),
+            )
+        }
+        is ContactsContentState.Error -> {
+            listContent.addView(
+                errorStateCard(content.message) {
+                    switchContactScenario(ContactListScenario.DEFAULT)
+                },
+            )
+        }
+    }
+
+    root.addView(
+        wrapInScroll(listContent).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f,
+            )
+        },
+    )
+    root.addView(space(8))
+    root.addView(contactsDebugSection(state))
+    root.addView(space(8))
+    root.addView(bottomNavigation(selectedTab = MainActivity.RootTab.CONTACTS))
 
     return root
 }
@@ -587,10 +671,29 @@ internal fun MainActivity.topBar(): LinearLayout {
             },
         )
         addView(
-            topTextButton("写消息") {
+            topTextButton("新聊天") {
                 openComposePlaceholder()
             }.apply {
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            },
+        )
+    }
+}
+
+internal fun MainActivity.contactsTopBar(): LinearLayout {
+    return LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+
+        addView(
+            titleView("Contacts", sizeSp = 22f).apply {
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            },
+        )
+        addView(
+            topTextButton("添加") {
+                openAddContactPlaceholder()
             },
         )
     }
@@ -624,6 +727,75 @@ internal fun MainActivity.searchTopBar(): LinearLayout {
                 setPadding(dp(10), dp(6), dp(10), dp(6))
             },
         )
+    }
+}
+
+internal fun MainActivity.contactsSearchBar(state: MainScreenState.Contacts): LinearLayout {
+    return LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        background = roundedBackground(
+            fillColor = Color.parseColor("#F1F3F6"),
+            strokeColor = Color.TRANSPARENT,
+            radiusDp = 18,
+        )
+        setPadding(dp(14), dp(6), dp(14), dp(6))
+
+        addView(
+            TextView(context).apply {
+                text = "搜索"
+                textSize = 13f
+                setTextColor(Color.parseColor("#8A95A1"))
+            },
+        )
+        addView(spaceWidth(10))
+        addView(
+            EditText(context).apply {
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                setText(state.searchDraft)
+                hint = "姓名或手机号"
+                inputType = InputType.TYPE_CLASS_TEXT
+                background = null
+                maxLines = 1
+                setTextColor(Color.parseColor("#25303A"))
+                setHintTextColor(Color.parseColor("#A3ADB8"))
+                addTextChangedListener(
+                    object : TextWatcher {
+                        override fun beforeTextChanged(
+                            s: CharSequence?,
+                            start: Int,
+                            count: Int,
+                            after: Int,
+                        ) = Unit
+
+                        override fun onTextChanged(
+                            s: CharSequence?,
+                            start: Int,
+                            before: Int,
+                            count: Int,
+                        ) = Unit
+
+                        override fun afterTextChanged(s: Editable?) {
+                            updateContactsSearchDraft(s?.toString().orEmpty())
+                        }
+                    },
+                )
+            },
+        )
+        addView(spaceWidth(6))
+        addView(
+            topTextButton("搜索") {
+                submitContactsSearch()
+            },
+        )
+        if (state.searchDraft.isNotBlank()) {
+            addView(spaceWidth(4))
+            addView(
+                topTextButton("清除") {
+                    clearContactsSearch()
+                },
+            )
+        }
     }
 }
 
@@ -941,6 +1113,64 @@ internal fun MainActivity.chatListRow(
     }
 }
 
+internal fun MainActivity.contactRow(contact: ContactSummary): LinearLayout {
+    return LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        minimumHeight = dp(74)
+        setPadding(dp(2), dp(10), dp(2), dp(10))
+        setOnClickListener {
+            openContact(contact)
+        }
+
+        addView(avatarView(contact))
+        addView(spaceWidth(12))
+        addView(
+            LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+
+                addView(
+                    LinearLayout(context).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        addView(
+                            TextView(context).apply {
+                                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                                text = contact.displayName
+                                textSize = 16f
+                                maxLines = 1
+                                ellipsize = TextUtils.TruncateAt.END
+                                setTypeface(Typeface.DEFAULT_BOLD)
+                                setTextColor(Color.parseColor("#1F2730"))
+                            },
+                        )
+                        addView(spaceWidth(8))
+                        addView(contactStatusBadge(contact))
+                    },
+                )
+                addView(space(4))
+                addView(
+                    secondaryView(contact.phoneNumber).apply {
+                        maxLines = 1
+                        ellipsize = TextUtils.TruncateAt.END
+                    },
+                )
+                if (contact.statusLabel.isNotBlank()) {
+                    addView(space(4))
+                    addView(
+                        secondaryView(contact.statusLabel).apply {
+                            maxLines = 1
+                            ellipsize = TextUtils.TruncateAt.END
+                            setTextColor(Color.parseColor("#2481CC"))
+                        },
+                    )
+                }
+            },
+        )
+    }
+}
+
 internal fun MainActivity.searchSectionLabel(text: String): TextView {
     return TextView(this).apply {
         this.text = text
@@ -1084,6 +1314,38 @@ internal fun MainActivity.chatSkeletonRow(): LinearLayout {
                 )
                 addView(space(8))
                 addView(skeletonBar(widthDp = 212, heightDp = 12))
+            },
+        )
+    }
+}
+
+internal fun MainActivity.contactSkeletonRow(): LinearLayout {
+    return LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        minimumHeight = dp(74)
+        setPadding(dp(2), dp(10), dp(2), dp(10))
+
+        addView(
+            View(context).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(54), dp(54))
+                background = roundedBackground(
+                    fillColor = Color.parseColor("#EBEFF4"),
+                    strokeColor = Color.TRANSPARENT,
+                    radiusDp = 27,
+                )
+            },
+        )
+        addView(spaceWidth(12))
+        addView(
+            LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                addView(skeletonBar(widthDp = 164, heightDp = 14))
+                addView(space(8))
+                addView(skeletonBar(widthDp = 128, heightDp = 12))
+                addView(space(8))
+                addView(skeletonBar(widthDp = 92, heightDp = 12))
             },
         )
     }
@@ -1898,6 +2160,7 @@ internal fun MainActivity.detailErrorStateCard(
                     ),
                     highlightedMessageId = state.highlightedMessageId,
                     returnToSearch = state.returnToSearch,
+                    returnToContacts = state.returnToContacts,
                 )
             },
         )
@@ -1927,6 +2190,49 @@ internal fun MainActivity.settingsErrorStateCard(
         addView(secondaryView(message))
         addView(space(18))
         addView(primaryButton("重试加载") { onRetry() })
+    }
+}
+
+internal fun MainActivity.contactsDebugSection(state: MainScreenState.Contacts): LinearLayout {
+    return LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+
+        addView(
+            secondaryView("Demo scenarios").apply {
+                setTypeface(Typeface.DEFAULT_BOLD)
+                setTextColor(Color.parseColor("#55636F"))
+            },
+        )
+        addView(space(6))
+        addView(
+            LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(
+                    contactScenarioButton(
+                        label = "默认",
+                        scenario = ContactListScenario.DEFAULT,
+                        active = state.debugScenario == ContactListScenario.DEFAULT,
+                    ),
+                )
+                addView(spaceWidth(8))
+                addView(
+                    contactScenarioButton(
+                        label = "空态",
+                        scenario = ContactListScenario.EMPTY,
+                        active = state.debugScenario == ContactListScenario.EMPTY,
+                    ),
+                )
+                addView(spaceWidth(8))
+                addView(
+                    contactScenarioButton(
+                        label = "错误态",
+                        scenario = ContactListScenario.ERROR,
+                        active = state.debugScenario == ContactListScenario.ERROR,
+                    ),
+                )
+            },
+        )
     }
 }
 
@@ -1994,6 +2300,25 @@ internal fun MainActivity.debugSection(state: MainScreenState.ChatList): LinearL
     }
 }
 
+internal fun MainActivity.contactScenarioButton(
+    label: String,
+    scenario: ContactListScenario,
+    active: Boolean,
+): Button {
+    return Button(this).apply {
+        text = label
+        isAllCaps = false
+        setTextColor(if (active) Color.WHITE else Color.parseColor("#2481CC"))
+        background = roundedBackground(
+            fillColor = if (active) Color.parseColor("#2481CC") else Color.parseColor("#EAF3FB"),
+            strokeColor = Color.TRANSPARENT,
+            radiusDp = 16,
+        )
+        setPadding(dp(12), dp(8), dp(12), dp(8))
+        setOnClickListener { switchContactScenario(scenario) }
+    }
+}
+
 internal fun MainActivity.debugScenarioButton(
     label: String,
     scenario: ChatListScenario,
@@ -2030,8 +2355,8 @@ internal fun MainActivity.bottomNavigation(selectedTab: MainActivity.RootTab): L
             },
         )
         addView(
-            bottomTab("Calls", selected = false) {
-                openCallsPlaceholder()
+            bottomTab("Contacts", selected = selectedTab == MainActivity.RootTab.CONTACTS) {
+                openContactsRoot(showLoading = selectedTab != MainActivity.RootTab.CONTACTS)
             },
         )
         addView(
@@ -2087,6 +2412,37 @@ internal fun MainActivity.avatarView(
             strokeColor = Color.TRANSPARENT,
             radiusDp = sizeDp / 2,
         )
+    }
+}
+
+internal fun MainActivity.avatarView(
+    contact: ContactSummary,
+    sizeDp: Int = 54,
+    textSizeSp: Float = 16f,
+): TextView {
+    val style = avatarStyleFor(contact)
+    return TextView(this).apply {
+        text = contact.avatarLabel
+        textSize = textSizeSp
+        gravity = Gravity.CENTER
+        setTypeface(Typeface.DEFAULT_BOLD)
+        setTextColor(Color.parseColor(style.textColorHex))
+        layoutParams = LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp))
+        background = roundedBackground(
+            fillColor = Color.parseColor(style.backgroundColorHex),
+            strokeColor = Color.TRANSPARENT,
+            radiusDp = sizeDp / 2,
+        )
+    }
+}
+
+internal fun MainActivity.contactStatusBadge(contact: ContactSummary): TextView {
+    val active = contact.hasExistingChat
+    return TextView(this).apply {
+        text = if (active) "已有聊天" else "新对话"
+        textSize = 12f
+        gravity = Gravity.CENTER
+        setTextColor(if (active) Color.parseColor("#62707C") else Color.parseColor("#2481CC"))
     }
 }
 
@@ -2346,6 +2702,10 @@ private val mediaTones = listOf(
 
 private fun avatarStyleFor(chat: ChatSummary): AvatarStyle {
     return avatarStyles[paletteIndex(chat.id, avatarStyles.size)]
+}
+
+private fun avatarStyleFor(contact: ContactSummary): AvatarStyle {
+    return avatarStyles[paletteIndex(contact.id, avatarStyles.size)]
 }
 
 private fun mediaToneFor(attachment: MediaAttachment): String {

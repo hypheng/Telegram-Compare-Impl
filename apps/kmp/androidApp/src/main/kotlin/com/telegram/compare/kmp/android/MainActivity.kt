@@ -24,8 +24,11 @@ import com.telegram.compare.kmp.shareddomain.ChatDetailLoadResult
 import com.telegram.compare.kmp.shareddomain.ChatListLoadResult
 import com.telegram.compare.kmp.shareddomain.ChatSummary
 import com.telegram.compare.kmp.shareddomain.ClearSyncSnapshotUseCase
+import com.telegram.compare.kmp.shareddomain.ContactSummary
+import com.telegram.compare.kmp.shareddomain.ContactsLoadResult
 import com.telegram.compare.kmp.shareddomain.LoadChatDetailUseCase
 import com.telegram.compare.kmp.shareddomain.LoadChatListUseCase
+import com.telegram.compare.kmp.shareddomain.LoadContactsUseCase
 import com.telegram.compare.kmp.shareddomain.LoginResult
 import com.telegram.compare.kmp.shareddomain.LoginWithCodeUseCase
 import com.telegram.compare.kmp.shareddomain.LogoutUseCase
@@ -33,6 +36,8 @@ import com.telegram.compare.kmp.shareddomain.LoadAvailableMediaUseCase
 import com.telegram.compare.kmp.shareddomain.MediaPickerLoadResult
 import com.telegram.compare.kmp.shareddomain.MessageSearchHit
 import com.telegram.compare.kmp.shareddomain.LoadSettingsUseCase
+import com.telegram.compare.kmp.shareddomain.OpenContactChatResult
+import com.telegram.compare.kmp.shareddomain.OpenContactChatUseCase
 import com.telegram.compare.kmp.shareddomain.PreferenceKey
 import com.telegram.compare.kmp.shareddomain.RefreshChatListUseCase
 import com.telegram.compare.kmp.shareddomain.RestoreSessionUseCase
@@ -54,6 +59,7 @@ import com.telegram.compare.kmp.shareddomain.TogglePreferenceUseCase
 import com.telegram.compare.kmp.shareddomain.UpdatePreferenceResult
 import com.telegram.compare.kmp.shareddomain.UserSession
 import com.telegram.compare.kmp.shareddata.ChatListScenario
+import com.telegram.compare.kmp.shareddata.ContactListScenario
 import com.telegram.compare.kmp.shareddata.DemoSessionRepository
 import com.telegram.compare.kmp.shareddata.InMemoryChatDebugController
 import com.telegram.compare.kmp.shareddata.InMemoryChatFixtureBundle
@@ -81,13 +87,16 @@ class MainActivity : Activity() {
     private var chatListStatusMessage: String? = null
     private var searchDraft: String = ""
     private var globalSearchDraft: String = ""
+    private var contactsSearchDraft: String = ""
     private var chatComposerDraft: String = ""
     private var lastChatListState: MainScreenState.ChatList? = null
+    private var lastContactsState: MainScreenState.Contacts? = null
     private var lastSettingsEntryState: MainScreenState? = null
     private var demoAuthEnabled = false
 
     private val chatListRepository get() = chatFixtureBundle.chatListRepository
     private val chatDetailRepository get() = chatFixtureBundle.chatDetailRepository
+    private val contactsRepository get() = chatFixtureBundle.contactsRepository
     private val searchRepository get() = chatFixtureBundle.searchRepository
     private val syncRepository get() = chatFixtureBundle.syncRepository
 
@@ -144,6 +153,10 @@ class MainActivity : Activity() {
                 returnFromSearch()
                 return
             }
+            is MainScreenState.Contacts -> {
+                openChatsRoot()
+                return
+            }
             is MainScreenState.Settings -> {
                 returnFromSettings()
                 return
@@ -183,6 +196,20 @@ class MainActivity : Activity() {
         )
     }
 
+    internal fun contactsState(
+        session: UserSession,
+        statusMessage: String?,
+        contentState: ContactsContentState,
+    ): MainScreenState.Contacts {
+        return MainScreenState.Contacts(
+            session = session,
+            searchDraft = contactsSearchDraft,
+            statusMessage = statusMessage,
+            contentState = contentState,
+            debugScenario = chatDebugController.currentContactListScenario(),
+        )
+    }
+
     internal fun updatePhoneDraft(value: String) {
         phoneDraft = value
     }
@@ -197,6 +224,10 @@ class MainActivity : Activity() {
 
     internal fun updateGlobalSearchDraft(value: String) {
         globalSearchDraft = value
+    }
+
+    internal fun updateContactsSearchDraft(value: String) {
+        contactsSearchDraft = value
     }
 
     internal fun updateChatComposerDraft(value: String) {
@@ -568,10 +599,165 @@ class MainActivity : Activity() {
         loadChatList(showLoading = true, isRefresh = false)
     }
 
+    internal fun openContactsRoot(
+        showLoading: Boolean = true,
+        statusMessageOverride: String? = null,
+    ) {
+        val session = currentSession ?: return
+
+        if (showLoading) {
+            render(
+                contactsState(
+                    session = session,
+                    statusMessage = statusMessageOverride ?: "正在加载联系人...",
+                    contentState = ContactsContentState.Loading,
+                ),
+            )
+        }
+
+        postPendingWork(CONTACTS_DELAY_MS) {
+            val result = LoadContactsUseCase(contactsRepository).execute(contactsSearchDraft)
+            renderContactsResult(
+                result = result,
+                statusMessage = statusMessageOverride,
+            )
+        }
+    }
+
+    internal fun renderContactsResult(
+        result: ContactsLoadResult,
+        statusMessage: String? = null,
+    ) {
+        val session = currentSession ?: return
+        val contentState = when (result) {
+            is ContactsLoadResult.Success -> ContactsContentState.Ready(result.contacts)
+            ContactsLoadResult.Empty -> {
+                if (contactsSearchDraft.isBlank()) {
+                    ContactsContentState.Empty(
+                        title = "暂无联系人",
+                        body = "当前 demo 通讯录为空。你可以恢复默认数据或稍后再试。",
+                    )
+                } else {
+                    ContactsContentState.Empty(
+                        title = "未找到匹配的联系人",
+                        body = "试试姓名拼音、昵称或手机号片段。",
+                    )
+                }
+            }
+            is ContactsLoadResult.Failed -> ContactsContentState.Error(result.message)
+        }
+
+        val resolvedStatusMessage = statusMessage ?: when (result) {
+            is ContactsLoadResult.Success -> {
+                if (contactsSearchDraft.isBlank()) {
+                    "联系人已加载。"
+                } else {
+                    "找到 ${result.contacts.size} 位联系人。"
+                }
+            }
+            ContactsLoadResult.Empty -> {
+                if (contactsSearchDraft.isBlank()) {
+                    "当前没有可显示的联系人。"
+                } else {
+                    "没有找到与 \"$contactsSearchDraft\" 相关的联系人。"
+                }
+            }
+            is ContactsLoadResult.Failed -> result.message
+        }
+
+        render(
+            contactsState(
+                session = session,
+                statusMessage = resolvedStatusMessage,
+                contentState = contentState,
+            ),
+        )
+    }
+
+    internal fun submitContactsSearch() {
+        val session = currentSession ?: return
+        contactsSearchDraft = contactsSearchDraft.trim()
+        render(
+            contactsState(
+                session = session,
+                statusMessage = if (contactsSearchDraft.isBlank()) {
+                    "已恢复默认联系人列表。"
+                } else {
+                    "正在搜索 \"$contactsSearchDraft\"..."
+                },
+                contentState = ContactsContentState.Loading,
+            ),
+        )
+        openContactsRoot(showLoading = false)
+    }
+
+    internal fun clearContactsSearch() {
+        contactsSearchDraft = ""
+        openContactsRoot(
+            showLoading = true,
+            statusMessageOverride = "已清除联系人搜索条件。",
+        )
+    }
+
+    internal fun openContact(contact: ContactSummary) {
+        val currentState = screenState as? MainScreenState.Contacts ?: return
+        render(
+            currentState.copy(
+                statusMessage = "正在打开 ${contact.displayName}...",
+            ),
+        )
+
+        postPendingWork(CONTACT_OPEN_DELAY_MS) {
+            when (val result = OpenContactChatUseCase(contactsRepository).execute(contact.id)) {
+                is OpenContactChatResult.Success -> {
+                    val detailStatusMessage = if (result.isNewChat) {
+                        "已开始与 ${contact.displayName} 的新对话。"
+                    } else {
+                        "已从联系人进入 ${contact.displayName}。"
+                    }
+                    chatListStatusMessage = detailStatusMessage
+                    openChat(
+                        chat = result.chat,
+                        returnToContacts = currentState.toReturnState(),
+                        successStatusMessage = detailStatusMessage,
+                    )
+                }
+                is OpenContactChatResult.Failed -> {
+                    render(
+                        currentState.copy(
+                            statusMessage = result.message,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    internal fun switchContactScenario(next: ContactListScenario) {
+        if (next == ContactListScenario.DEFAULT) {
+            chatDebugController.restoreDefaultContactScenario()
+        } else {
+            chatDebugController.setContactListScenario(next)
+        }
+        contactsSearchDraft = ""
+        openContactsRoot(
+            showLoading = true,
+            statusMessageOverride = when (next) {
+                ContactListScenario.DEFAULT -> "已恢复联系人列表。"
+                ContactListScenario.EMPTY -> "已切换到联系人空态 fixture。"
+                ContactListScenario.ERROR -> "已切换到联系人错误态 fixture。"
+            },
+        )
+    }
+
     internal fun openSettings(showLoading: Boolean = true) {
         val session = currentSession ?: return
         val currentState = screenState
-        if (currentState is MainScreenState.ChatList || currentState is MainScreenState.Search) {
+        if (
+            currentState is MainScreenState.ChatList ||
+            currentState is MainScreenState.Search ||
+            currentState is MainScreenState.Contacts
+        ) {
             lastSettingsEntryState = currentState
         }
 
@@ -646,6 +832,11 @@ class MainActivity : Activity() {
     internal fun returnFromSettings() {
         when (val fallback = lastSettingsEntryState) {
             is MainScreenState.Search -> render(fallback)
+            is MainScreenState.Contacts -> render(
+                fallback.copy(
+                    statusMessage = "已返回联系人。",
+                ),
+            )
             is MainScreenState.ChatList -> render(
                 fallback.copy(
                     statusMessage = "已返回聊天主壳。",
@@ -730,6 +921,7 @@ class MainActivity : Activity() {
                             statusMessage = "图片已发送。",
                             highlightedMessageId = currentState.highlightedMessageId,
                             returnToSearch = currentState.returnToSearch,
+                            returnToContacts = currentState.returnToContacts,
                         )
                     }
                     is SendMediaResult.Failed -> {
@@ -774,6 +966,8 @@ class MainActivity : Activity() {
         chat: ChatSummary,
         highlightedMessageId: String? = null,
         returnToSearch: SearchReturnState? = null,
+        returnToContacts: ContactsReturnState? = null,
+        successStatusMessage: String? = null,
     ) {
         val session = currentSession ?: return
         chatComposerDraft = ""
@@ -793,6 +987,7 @@ class MainActivity : Activity() {
                 nextSendWillFail = chatDebugController.nextSendWillFail(),
                 highlightedMessageId = highlightedMessageId,
                 returnToSearch = returnToSearch,
+                returnToContacts = returnToContacts,
             ),
         )
 
@@ -808,12 +1003,16 @@ class MainActivity : Activity() {
                                 "已定位到包含 \"${returnToSearch?.queryDraft.orEmpty()}\" 的消息。"
                             }
                             returnToSearch != null -> "已从搜索结果打开 ${result.thread.chat.title}。"
+                            returnToContacts != null -> {
+                                successStatusMessage ?: "已从联系人进入 ${result.thread.chat.title}。"
+                            }
                             else -> "已进入 ${result.thread.chat.title}。"
                         }
                         is ChatDetailLoadResult.Failed -> result.message
                     },
                     highlightedMessageId = highlightedMessageId,
                     returnToSearch = returnToSearch,
+                    returnToContacts = returnToContacts,
                 )
         }
     }
@@ -827,6 +1026,7 @@ class MainActivity : Activity() {
         retryingMessageId: String? = null,
         highlightedMessageId: String? = null,
         returnToSearch: SearchReturnState? = null,
+        returnToContacts: ContactsReturnState? = null,
     ) {
         val session = currentSession ?: return
         val contentState = when (result) {
@@ -854,6 +1054,7 @@ class MainActivity : Activity() {
                 nextSendWillFail = chatDebugController.nextSendWillFail(),
                 highlightedMessageId = highlightedMessageId,
                 returnToSearch = returnToSearch,
+                returnToContacts = returnToContacts,
             ),
         )
 
@@ -911,6 +1112,7 @@ class MainActivity : Activity() {
                             statusMessage = "消息已发送。",
                             highlightedMessageId = currentState.highlightedMessageId,
                             returnToSearch = currentState.returnToSearch,
+                            returnToContacts = currentState.returnToContacts,
                         )
                     }
                     is SendMessageResult.InvalidInput -> {
@@ -970,6 +1172,7 @@ class MainActivity : Activity() {
                             statusMessage = "消息已重试发送。",
                             highlightedMessageId = currentState.highlightedMessageId,
                             returnToSearch = currentState.returnToSearch,
+                            returnToContacts = currentState.returnToContacts,
                         )
                     }
                     is RetryMessageResult.Failed -> {
@@ -1024,6 +1227,14 @@ class MainActivity : Activity() {
             )
             return
         }
+        currentState.returnToContacts?.let { returnState ->
+            contactsSearchDraft = returnState.searchDraft
+            renderContactsResult(
+                result = LoadContactsUseCase(contactsRepository).execute(contactsSearchDraft),
+                statusMessage = "已返回联系人。",
+            )
+            return
+        }
 
         lastChatListState?.let { listState ->
             searchDraft = listState.searchDraft
@@ -1041,9 +1252,20 @@ class MainActivity : Activity() {
     }
 
     internal fun openComposePlaceholder() {
-        val currentState = screenState as? MainScreenState.ChatList ?: return
-        chatListStatusMessage = "写消息入口已保留，但真实新建会话将在后续切片实现。"
-        render(currentState.copy(statusMessage = chatListStatusMessage))
+        contactsSearchDraft = ""
+        openContactsRoot(
+            showLoading = true,
+            statusMessageOverride = "选择联系人开始新的对话。",
+        )
+    }
+
+    internal fun openAddContactPlaceholder() {
+        val currentState = screenState as? MainScreenState.Contacts ?: return
+        render(
+            currentState.copy(
+                statusMessage = "添加联系人不在本轮范围。",
+            ),
+        )
     }
 
     internal fun openEditPlaceholder() {
@@ -1095,9 +1317,11 @@ class MainActivity : Activity() {
         currentSession = null
         searchDraft = ""
         globalSearchDraft = ""
+        contactsSearchDraft = ""
         chatComposerDraft = ""
         chatListStatusMessage = null
         lastChatListState = null
+        lastContactsState = null
         lastSettingsEntryState = null
         chatDebugController.restoreDefaultFixtures()
         render(loginState(formMessage = "已退出登录。"))
@@ -1106,15 +1330,6 @@ class MainActivity : Activity() {
     internal fun openChatsRoot() {
         chatListStatusMessage = "已返回会话列表。"
         loadChatList(showLoading = true, isRefresh = false)
-    }
-
-    internal fun openCallsPlaceholder() {
-        when (val currentState = screenState) {
-            is MainScreenState.ChatList -> render(currentState.copy(statusMessage = "Calls tab 仍在 backlog。"))
-            is MainScreenState.Search -> render(currentState.copy(statusMessage = "Calls tab 仍在 backlog。"))
-            is MainScreenState.Settings -> render(currentState.copy(statusMessage = "Calls tab 仍在 backlog。"))
-            else -> Unit
-        }
     }
 
     internal fun openChatDetailOverflowPlaceholder() {
@@ -1139,6 +1354,10 @@ class MainActivity : Activity() {
             is MainScreenState.Search -> {
                 globalSearchDraft = state.queryDraft
             }
+            is MainScreenState.Contacts -> {
+                lastContactsState = state
+                contactsSearchDraft = state.searchDraft
+            }
             else -> Unit
         }
         val content = when (state) {
@@ -1146,6 +1365,7 @@ class MainActivity : Activity() {
             is MainScreenState.Login -> buildLoginScreen(state)
             is MainScreenState.ChatList -> buildChatListScreen(state)
             is MainScreenState.Search -> buildSearchScreen(state)
+            is MainScreenState.Contacts -> buildContactsScreen(state)
             is MainScreenState.Settings -> buildSettingsScreen(state)
             is MainScreenState.ChatDetail -> buildChatDetailScreen(state)
         }
@@ -1487,8 +1707,17 @@ class MainActivity : Activity() {
         )
     }
 
+    internal fun MainScreenState.Contacts.toReturnState(): ContactsReturnState {
+        return ContactsReturnState(
+            searchDraft = searchDraft,
+            statusMessage = statusMessage,
+            contentState = contentState,
+        )
+    }
+
     internal enum class RootTab {
         CHATS,
+        CONTACTS,
         SETTINGS,
     }
 
@@ -1497,6 +1726,8 @@ class MainActivity : Activity() {
         const val RESTORE_DELAY_MS = 650L
         const val LOGIN_DELAY_MS = 450L
         const val CHAT_LIST_DELAY_MS = 320L
+        const val CONTACTS_DELAY_MS = 260L
+        const val CONTACT_OPEN_DELAY_MS = 220L
         const val REFRESH_DELAY_MS = 520L
         const val CHAT_DETAIL_DELAY_MS = 260L
         const val SETTINGS_DELAY_MS = 220L

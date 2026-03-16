@@ -72,6 +72,15 @@
 | Send media message | 在 picker 中选择图片 | 顶部 banner + 详情保持稳定 | 新媒体消息追加到 thread 尾部 | 保持当前 thread，给出发送失败提示 |
 | Restore detail with media | 冷启动恢复到包含媒体消息的详情 | 继续沿用 `S4` restoring 反馈 | 最近媒体消息仍可见 | 回退正常详情加载并提示缓存不可用 |
 
+## S8 补充状态
+
+| Flow | Trigger | Loading Feedback | Success Feedback | Failure Feedback |
+|---|---|---|---|---|
+| Open contacts | 点击底部 `Contacts` tab 或顶部 `写消息` | 顶部稳定 + 列表 skeleton | 进入联系人默认列表态 | 页面级 error state + retry |
+| Search contacts | 联系人搜索框输入关键词 | 结果区域轻量更新 | 展示过滤后的联系人 | 空态提示，不用系统弹窗 |
+| Open existing contact chat | 点击已有聊天的联系人 | 行按压反馈 + 轻量页面跳转反馈 | 进入对应聊天详情 | 停留联系人页并给出 banner |
+| Start chat from new contact | 点击无现有聊天的联系人 | 行按压反馈 + 轻量页面跳转反馈 | 创建新聊天并进入详情，返回后同一联系人刷新为已有聊天 | 停留联系人页并给出 banner |
+
 ## 手势与反馈
 
 - Chat list row: tap 进入，swipe 作为次级操作预留
@@ -82,6 +91,7 @@
 - Snapshot restore: 恢复到列表或详情时优先使用内联 banner，而不是阻塞弹窗
 - Global search: 搜索页只允许结果 viewport 滚动，保持顶部搜索框和返回结构稳定
 - Settings scroll: 设置页只允许内容 viewport 滚动，顶部与底部导航固定
+- Contacts scroll: 联系人页只允许联系人列表 viewport 滚动，顶部与底部导航固定
 - Media picker: 作为底部覆盖层出现，系统返回优先关闭 picker，再返回上一页
 - Top actions: 顶部编辑、写消息、添加等入口优先使用轻量按压反馈，不做重按钮态
 - Back navigation: 遵循平台默认手势，不自造交互
