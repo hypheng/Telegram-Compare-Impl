@@ -28,9 +28,9 @@
 | 1 | 通过 ADB 操作 CJMP S2 列表 | completed | 点击行与刷新按钮已可触发 |
 | 2 | 捕获 refreshing 设备截图 | completed | `s2-cjmp-refreshing.png` |
 | 3 | 捕获 entry placeholder 设备截图 | completed | `s2-cjmp-entry-placeholder.png` |
-| 4 | 切换 empty fixture 并截图 | completed | debug 面板仍可见 |
-| 5 | 切换 error fixture 并截图 | completed | error 状态为手工验证并记录 |
-| 6 | 回写 parity 与 evidence README | completed | 标注 error 为手动验证 |
+| 4 | 切换 empty fixture 并截图 | completed | 自动收起 debug 面板，补齐干净证据 |
+| 5 | 切换 error fixture 并截图 | completed | 自动收起 debug 面板，补齐干净证据 |
+| 6 | 回写 parity 与 evidence README | completed | 移除手动验证标注 |
 
 ## Files And Evidence
 
@@ -50,12 +50,12 @@
   - `AC-S2-6`: empty / error 设备侧证据补齐（error 为手工验证）。
   - `AC-S2-7`: entry placeholder 设备侧证据补齐。
 - Criteria still open:
-  - empty/error 仍缺 debug 面板收起后的纯净截图。
+  - 无。
 
 ## Outcome
 
 - Completed:
   - S2 fixed chrome 的 refreshing / entry placeholder / empty / error 证据归档完成。
-  - parity matrix 与 evidence README 已注明 error 为手动验证。
+  - empty/error 的干净截图已补齐，parity 与 README 同步更新。
 - Remaining:
-  - 继续补一组 debug 面板收起的 empty/error 证据截图。
+  - 无。

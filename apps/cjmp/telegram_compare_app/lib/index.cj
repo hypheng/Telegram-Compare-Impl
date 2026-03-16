@@ -238,6 +238,17 @@ class EntryView {
                             }
                             .width(100.percent)
                             .margin(top: 10)
+
+                            Button("收起面板")
+                                .width(100.percent)
+                                .height(32)
+                                .margin(top: 10)
+                                .backgroundColor(0xEFF3F7)
+                                .fontColor(0x4B5563)
+                                .fontSize(12)
+                                .onClick({ _ =>
+                                    this.debugExpanded = false
+                                })
                         }
                         .width(100.percent)
                         .padding(left: 12, right: 12, top: 10, bottom: 12)
@@ -1460,6 +1471,7 @@ class EntryView {
             this.listStatus = "当前展示 error fixture。"
             this.debugMessage = "错误态保留页面结构，并提供重试入口。"
         }
+        this.debugExpanded = false
     }
 
     func applySearch(value: String, note: String): Unit {

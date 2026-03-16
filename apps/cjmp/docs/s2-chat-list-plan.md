@@ -33,8 +33,7 @@
 - 当前 debug-only 控件仍然占据首屏，尚未压缩到低干扰区域。
 - 列表行尚未恢复 Telegram 风格的头像 / 时间 / 未读徽标 / 静音状态密度，只先保证 safe shell 可见。
 - pull-to-refresh 还没有落成真实列表 viewport 内手势，只保留了 debug-only 手动刷新入口。
-- `search / empty / error / refreshing / entry placeholder` 的设备侧归档已补齐；error 状态为手工验证并记录。
-- 仍缺 debug 面板收起后的 empty/error 纯净截图。
+- `search / empty / error / refreshing / entry placeholder` 的设备侧归档已补齐，empty/error 已补干净截图。
 
 ## Delivery Order
 
