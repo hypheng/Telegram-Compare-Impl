@@ -28,6 +28,8 @@ class EntryView {
     @State var listScenario: String = "default"
     @State var entryPlaceholder: String = ""
     @State var hasReachedListTopOnce: Bool = false
+    @State var debugExpanded: Bool = false
+    @State var isRefreshing: Bool = false
 
     public override func aboutToAppear(): Unit {
         this.attemptRestore()
@@ -58,161 +60,37 @@ class EntryView {
                     .width(100.percent)
                     .alignItems(VerticalAlign.Center)
 
-                    Text("CJMP `S2` safe shell，当前优先闭合固定 chrome、列表状态和进入 `S3`。")
-                        .fontSize(13)
-                        .fontColor(0x6B7280)
-                        .width(100.percent)
-                        .margin(top: 8)
-
-                    Text(this.sessionSummary)
-                        .fontSize(13)
-                        .fontColor(0x51606F)
-                        .width(100.percent)
-                        .margin(top: 12)
-
                     Text(this.listStatusLine())
                         .fontSize(12)
                         .fontColor(0x6B7280)
                         .width(100.percent)
-                        .margin(top: 6)
+                        .margin(top: 10)
 
-                    if (this.debugMessage != "") {
-                        Text(this.debugMessage)
-                            .fontSize(12)
-                            .fontColor(0x6B7280)
-                            .width(100.percent)
-                            .margin(top: 6)
-                    }
+                    Button(if (this.debugExpanded) { "收起调试面板" } else { "展开调试面板" })
+                        .width(100.percent)
+                        .height(28)
+                        .margin(top: 8)
+                        .backgroundColor(0xEFF3F7)
+                        .fontColor(0x4B5563)
+                        .fontSize(11)
+                        .onClick({ _ =>
+                            this.debugExpanded = !this.debugExpanded
+                        })
 
                     TextInput(placeholder: "搜索会话或最近消息")
                         .height(46)
-                        .margin(top: 14)
+                        .margin(top: 12)
                         .padding(left: 16, right: 16)
                         .backgroundColor(0xEDF2F7)
                         .borderRadius(23)
                         .onChange({ value: String =>
                             this.searchDraft = value
                             this.entryPlaceholder = ""
+                            this.isRefreshing = false
+                            if (value != "" && this.listScenario != "default") {
+                                this.listScenario = "default"
+                            }
                         })
-
-                    Row() {
-                        Button("搜 AI")
-                            .layoutWeight(1)
-                            .height(34)
-                            .backgroundColor(0xF4F7FB)
-                            .fontColor(0x2A5CAA)
-                            .fontSize(12)
-                            .onClick({ _ =>
-                                this.applySearch("infra", "已填入搜索词 infra，用于验证 `AI Infra` 过滤结果。")
-                            })
-
-                        Button("搜 zzz")
-                            .layoutWeight(1)
-                            .height(34)
-                            .margin(left: 8)
-                            .backgroundColor(0xF4F7FB)
-                            .fontColor(0x2A5CAA)
-                            .fontSize(12)
-                            .onClick({ _ =>
-                                this.applySearch("zzz", "已填入搜索词 zzz，用于验证搜索空态。")
-                            })
-
-                        Button("清除")
-                            .layoutWeight(1)
-                            .height(34)
-                            .margin(left: 8)
-                            .backgroundColor(0xF4F7FB)
-                            .fontColor(0x2A5CAA)
-                            .fontSize(12)
-                            .onClick({ _ =>
-                                this.resetSearch()
-                            })
-                    }
-                    .width(100.percent)
-                    .margin(top: 10)
-
-                    Row() {
-                        Button("默认")
-                            .layoutWeight(1)
-                            .height(34)
-                            .backgroundColor(0xDCEBFF)
-                            .fontColor(0x2A5CAA)
-                            .fontSize(12)
-                            .onClick({ _ =>
-                                this.setListScenario("default")
-                            })
-
-                        Button("loading")
-                            .layoutWeight(1)
-                            .height(34)
-                            .margin(left: 8)
-                            .backgroundColor(0xEDE7FF)
-                            .fontColor(0x6541A8)
-                            .fontSize(12)
-                            .onClick({ _ =>
-                                this.setListScenario("loading")
-                            })
-
-                        Button("empty")
-                            .layoutWeight(1)
-                            .height(34)
-                            .margin(left: 8)
-                            .backgroundColor(0xFFF3DD)
-                            .fontColor(0x9A5A00)
-                            .fontSize(12)
-                            .onClick({ _ =>
-                                this.setListScenario("empty")
-                            })
-
-                        Button("error")
-                            .layoutWeight(1)
-                            .height(34)
-                            .margin(left: 8)
-                            .backgroundColor(0xFFE4E4)
-                            .fontColor(0xA12A2A)
-                            .fontSize(12)
-                            .onClick({ _ =>
-                                this.setListScenario("error")
-                            })
-                    }
-                    .width(100.percent)
-                    .margin(top: 10)
-
-                    Row() {
-                        Button("刷新")
-                            .layoutWeight(1)
-                            .height(34)
-                            .backgroundColor(0xE7F6EA)
-                            .fontColor(0x2E7D32)
-                            .fontSize(12)
-                            .onClick({ _ =>
-                                this.performRefresh("manual")
-                            })
-
-                        Button("失效会话")
-                            .layoutWeight(1)
-                            .height(34)
-                            .margin(left: 8)
-                            .backgroundColor(0xFFF2D9)
-                            .fontColor(0x9A5A00)
-                            .fontSize(12)
-                            .onClick({ _ =>
-                                this.seedExpiredSession()
-                            })
-
-                        Button("退出")
-                            .layoutWeight(1)
-                            .height(34)
-                            .margin(left: 8)
-                            .backgroundColor(0xE3F2FD)
-                            .fontColor(0x245A88)
-                            .fontSize(12)
-                            .onClick({ _ =>
-                                this.performLogout()
-                            })
-                    }
-                    .width(100.percent)
-                    .margin(top: 10)
 
                     if (this.entryPlaceholder != "") {
                         Text(this.entryPlaceholder)
@@ -224,44 +102,318 @@ class EntryView {
                             .backgroundColor(0xE7F1FF)
                             .borderRadius(16)
                     }
+
+                    if (this.debugExpanded) {
+                        Column() {
+                            if (this.sessionSummary != "") {
+                                Text(this.sessionSummary)
+                                    .fontSize(12)
+                                    .fontColor(0x51606F)
+                                    .width(100.percent)
+                            }
+
+                            if (this.debugMessage != "") {
+                                Text(this.debugMessage)
+                                    .fontSize(12)
+                                    .fontColor(0x6B7280)
+                                    .width(100.percent)
+                                    .margin(top: 6)
+                            }
+
+                            Row() {
+                                Button("搜 AI")
+                                    .layoutWeight(1)
+                                    .height(32)
+                                    .backgroundColor(0xF4F7FB)
+                                    .fontColor(0x2A5CAA)
+                                    .fontSize(12)
+                                    .onClick({ _ =>
+                                        this.applySearch("infra", "已填入搜索词 infra，用于验证 `AI Infra` 过滤结果。")
+                                    })
+
+                                Button("搜 zzz")
+                                    .layoutWeight(1)
+                                    .height(32)
+                                    .margin(left: 8)
+                                    .backgroundColor(0xF4F7FB)
+                                    .fontColor(0x2A5CAA)
+                                    .fontSize(12)
+                                    .onClick({ _ =>
+                                        this.applySearch("zzz", "已填入搜索词 zzz，用于验证搜索空态。")
+                                    })
+
+                                Button("清除")
+                                    .layoutWeight(1)
+                                    .height(32)
+                                    .margin(left: 8)
+                                    .backgroundColor(0xF4F7FB)
+                                    .fontColor(0x2A5CAA)
+                                    .fontSize(12)
+                                    .onClick({ _ =>
+                                        this.resetSearch()
+                                    })
+                            }
+                            .width(100.percent)
+                            .margin(top: 12)
+
+                            Row() {
+                                Button("默认")
+                                    .layoutWeight(1)
+                                    .height(32)
+                                    .backgroundColor(0xDCEBFF)
+                                    .fontColor(0x2A5CAA)
+                                    .fontSize(12)
+                                    .onClick({ _ =>
+                                        this.setListScenario("default")
+                                    })
+
+                                Button("loading")
+                                    .layoutWeight(1)
+                                    .height(32)
+                                    .margin(left: 8)
+                                    .backgroundColor(0xEDE7FF)
+                                    .fontColor(0x6541A8)
+                                    .fontSize(12)
+                                    .onClick({ _ =>
+                                        this.setListScenario("loading")
+                                    })
+
+                                Button("empty")
+                                    .layoutWeight(1)
+                                    .height(32)
+                                    .margin(left: 8)
+                                    .backgroundColor(0xFFF3DD)
+                                    .fontColor(0x9A5A00)
+                                    .fontSize(12)
+                                    .onClick({ _ =>
+                                        this.setListScenario("empty")
+                                    })
+
+                                Button("error")
+                                    .layoutWeight(1)
+                                    .height(32)
+                                    .margin(left: 8)
+                                    .backgroundColor(0xFFE4E4)
+                                    .fontColor(0xA12A2A)
+                                    .fontSize(12)
+                                    .onClick({ _ =>
+                                        this.setListScenario("error")
+                                    })
+                            }
+                            .width(100.percent)
+                            .margin(top: 10)
+
+                            Row() {
+                                Button("刷新")
+                                    .layoutWeight(1)
+                                    .height(32)
+                                    .backgroundColor(0xE7F6EA)
+                                    .fontColor(0x2E7D32)
+                                    .fontSize(12)
+                                    .onClick({ _ =>
+                                        this.performRefresh("manual")
+                                    })
+
+                                Button("失效会话")
+                                    .layoutWeight(1)
+                                    .height(32)
+                                    .margin(left: 8)
+                                    .backgroundColor(0xFFF2D9)
+                                    .fontColor(0x9A5A00)
+                                    .fontSize(12)
+                                    .onClick({ _ =>
+                                        this.seedExpiredSession()
+                                    })
+
+                                Button("退出")
+                                    .layoutWeight(1)
+                                    .height(32)
+                                    .margin(left: 8)
+                                    .backgroundColor(0xE3F2FD)
+                                    .fontColor(0x245A88)
+                                    .fontSize(12)
+                                    .onClick({ _ =>
+                                        this.performLogout()
+                                    })
+                            }
+                            .width(100.percent)
+                            .margin(top: 10)
+                        }
+                        .width(100.percent)
+                        .padding(left: 12, right: 12, top: 10, bottom: 12)
+                        .margin(top: 12)
+                        .backgroundColor(0xF7F9FC)
+                        .borderRadius(16)
+                    }
                 }
                 .width(100.percent)
                 .padding(20)
                 .backgroundColor(0xFFFFFF)
                 .borderRadius(24)
 
-                Scroll() {
-                    Column() {
+                Column() {
+                    Scroll() {
+                        Column() {
+                        if (this.listScenario != "loading" && this.listScenario != "error") {
+                            Row() {
+                                Text(if (this.isRefreshing) { "正在刷新..." } else { "下拉可刷新" })
+                                    .layoutWeight(1)
+                                    .fontSize(12)
+                                    .fontColor(0x6B7280)
+
+                                Button(if (this.isRefreshing) { "完成" } else { "刷新" })
+                                    .height(28)
+                                    .backgroundColor(0xE7F1FF)
+                                    .fontColor(0x2A5CAA)
+                                    .fontSize(11)
+                                    .onClick({ _ =>
+                                        if (this.isRefreshing) {
+                                            this.finishRefresh()
+                                        } else {
+                                            this.performRefresh("pull")
+                                        }
+                                    })
+                            }
+                            .width(100.percent)
+                            .padding(left: 18, right: 18, top: 12, bottom: 12)
+                            .backgroundColor(0xF7F9FC)
+                            .borderRadius(16)
+                            .margin(bottom: 12)
+                        }
+
                         if (this.listScenario == "loading") {
                             Column() {
-                                Text("正在加载会话...")
-                                    .fontSize(16)
-                                    .fontWeight(FontWeight.Medium)
-                                    .width(100.percent)
+                                Row() {
+                                    Blank()
+                                        .width(48)
+                                        .height(48)
+                                        .backgroundColor(0xE6ECF4)
+                                        .borderRadius(24)
 
-                                Text("顶部 chrome、搜索框和底部导航保持固定，列表 viewport 内展示 loading 内容。")
-                                    .fontSize(13)
-                                    .fontColor(0x6B7280)
-                                    .width(100.percent)
-                                    .margin(top: 8)
+                                    Column() {
+                                        Blank()
+                                            .height(14)
+                                            .width(70.percent)
+                                            .backgroundColor(0xE6ECF4)
+                                            .borderRadius(6)
 
-                                Text("1. 准备 fixture")
-                                    .fontSize(13)
-                                    .fontColor(0x6B7280)
-                                    .width(100.percent)
-                                    .margin(top: 12)
+                                        Blank()
+                                            .height(12)
+                                            .width(52.percent)
+                                            .backgroundColor(0xE6ECF4)
+                                            .borderRadius(6)
+                                            .margin(top: 8)
+                                    }
+                                    .layoutWeight(1)
+                                    .margin(left: 12)
 
-                                Text("2. 应用搜索条件")
-                                    .fontSize(13)
-                                    .fontColor(0x6B7280)
-                                    .width(100.percent)
-                                    .margin(top: 6)
+                                    Column() {
+                                        Blank()
+                                            .height(10)
+                                            .width(36)
+                                            .backgroundColor(0xE6ECF4)
+                                            .borderRadius(6)
 
-                                Text("3. 渲染列表行")
-                                    .fontSize(13)
-                                    .fontColor(0x6B7280)
-                                    .width(100.percent)
-                                    .margin(top: 6)
+                                        Blank()
+                                            .height(18)
+                                            .width(26)
+                                            .backgroundColor(0xE6ECF4)
+                                            .borderRadius(9)
+                                            .margin(top: 10)
+                                    }
+                                    .width(60)
+                                    .alignItems(HorizontalAlign.End)
+                                }
+                                .width(100.percent)
+                                .padding(left: 18, right: 18, top: 16, bottom: 16)
+
+                                Row() {
+                                    Blank()
+                                        .width(48)
+                                        .height(48)
+                                        .backgroundColor(0xE6ECF4)
+                                        .borderRadius(24)
+
+                                    Column() {
+                                        Blank()
+                                            .height(14)
+                                            .width(66.percent)
+                                            .backgroundColor(0xE6ECF4)
+                                            .borderRadius(6)
+
+                                        Blank()
+                                            .height(12)
+                                            .width(48.percent)
+                                            .backgroundColor(0xE6ECF4)
+                                            .borderRadius(6)
+                                            .margin(top: 8)
+                                    }
+                                    .layoutWeight(1)
+                                    .margin(left: 12)
+
+                                    Column() {
+                                        Blank()
+                                            .height(10)
+                                            .width(36)
+                                            .backgroundColor(0xE6ECF4)
+                                            .borderRadius(6)
+
+                                        Blank()
+                                            .height(18)
+                                            .width(26)
+                                            .backgroundColor(0xE6ECF4)
+                                            .borderRadius(9)
+                                            .margin(top: 10)
+                                    }
+                                    .width(60)
+                                    .alignItems(HorizontalAlign.End)
+                                }
+                                .width(100.percent)
+                                .padding(left: 18, right: 18, top: 16, bottom: 16)
+
+                                Row() {
+                                    Blank()
+                                        .width(48)
+                                        .height(48)
+                                        .backgroundColor(0xE6ECF4)
+                                        .borderRadius(24)
+
+                                    Column() {
+                                        Blank()
+                                            .height(14)
+                                            .width(62.percent)
+                                            .backgroundColor(0xE6ECF4)
+                                            .borderRadius(6)
+
+                                        Blank()
+                                            .height(12)
+                                            .width(44.percent)
+                                            .backgroundColor(0xE6ECF4)
+                                            .borderRadius(6)
+                                            .margin(top: 8)
+                                    }
+                                    .layoutWeight(1)
+                                    .margin(left: 12)
+
+                                    Column() {
+                                        Blank()
+                                            .height(10)
+                                            .width(36)
+                                            .backgroundColor(0xE6ECF4)
+                                            .borderRadius(6)
+
+                                        Blank()
+                                            .height(18)
+                                            .width(26)
+                                            .backgroundColor(0xE6ECF4)
+                                            .borderRadius(9)
+                                            .margin(top: 10)
+                                    }
+                                    .width(60)
+                                    .alignItems(HorizontalAlign.End)
+                                }
+                                .width(100.percent)
+                                .padding(left: 18, right: 18, top: 16, bottom: 16)
                             }
                             .width(100.percent)
                             .padding(18)
@@ -337,27 +489,55 @@ class EntryView {
 
                                         Column() {
                                             Text(this.visibleChat(0).title)
-                                                .fontSize(17)
+                                                .fontSize(16)
                                                 .fontWeight(FontWeight.Medium)
                                                 .width(100.percent)
 
                                             Text(this.visibleChat(0).lastMessagePreview)
-                                                .fontSize(14)
+                                                .fontSize(13)
                                                 .fontColor(0x6B7280)
                                                 .width(100.percent)
                                                 .margin(top: 4)
-
-                                            Text(this.chatMetaLine(this.visibleChat(0)))
-                                                .fontSize(12)
-                                                .fontColor(0x9AA5B1)
-                                                .width(100.percent)
-                                                .margin(top: 6)
                                         }
                                         .layoutWeight(1)
                                         .margin(left: 12)
+
+                                        Column() {
+                                            Text(this.visibleChat(0).lastMessageAtLabel)
+                                                .fontSize(12)
+                                                .fontColor(0x9AA5B1)
+                                                .width(100.percent)
+                                                .textAlign(TextAlign.End)
+
+                                            if (this.visibleChat(0).unreadCount > 0) {
+                                                Text("${this.visibleChat(0).unreadCount}")
+                                                    .fontSize(12)
+                                                    .fontColor(0xFFFFFF)
+                                                    .padding(left: 8, right: 8, top: 2, bottom: 2)
+                                                    .backgroundColor(0x2A8AF6)
+                                                    .borderRadius(10)
+                                                    .margin(top: 8)
+                                                    .textAlign(TextAlign.Center)
+                                            } else {
+                                                Blank()
+                                                    .height(18)
+                                                    .margin(top: 8)
+                                            }
+
+                                            if (this.visibleChat(0).isMuted) {
+                                                Text("静音")
+                                                    .fontSize(10)
+                                                    .fontColor(0x9AA5B1)
+                                                    .width(100.percent)
+                                                    .textAlign(TextAlign.End)
+                                                    .margin(top: 6)
+                                            }
+                                        }
+                                        .width(70)
+                                        .margin(left: 8)
                                     }
                                     .width(100.percent)
-                                    .padding(left: 18, right: 18, top: 16, bottom: 16)
+                                    .padding(left: 18, right: 18, top: 14, bottom: 14)
                                     .onClick({ _ =>
                                         this.openChat(this.visibleChat(0))
                                     })
@@ -383,27 +563,55 @@ class EntryView {
 
                                         Column() {
                                             Text(this.visibleChat(1).title)
-                                                .fontSize(17)
+                                                .fontSize(16)
                                                 .fontWeight(FontWeight.Medium)
                                                 .width(100.percent)
 
                                             Text(this.visibleChat(1).lastMessagePreview)
-                                                .fontSize(14)
+                                                .fontSize(13)
                                                 .fontColor(0x6B7280)
                                                 .width(100.percent)
                                                 .margin(top: 4)
-
-                                            Text(this.chatMetaLine(this.visibleChat(1)))
-                                                .fontSize(12)
-                                                .fontColor(0x9AA5B1)
-                                                .width(100.percent)
-                                                .margin(top: 6)
                                         }
                                         .layoutWeight(1)
                                         .margin(left: 12)
+
+                                        Column() {
+                                            Text(this.visibleChat(1).lastMessageAtLabel)
+                                                .fontSize(12)
+                                                .fontColor(0x9AA5B1)
+                                                .width(100.percent)
+                                                .textAlign(TextAlign.End)
+
+                                            if (this.visibleChat(1).unreadCount > 0) {
+                                                Text("${this.visibleChat(1).unreadCount}")
+                                                    .fontSize(12)
+                                                    .fontColor(0xFFFFFF)
+                                                    .padding(left: 8, right: 8, top: 2, bottom: 2)
+                                                    .backgroundColor(0x2A8AF6)
+                                                    .borderRadius(10)
+                                                    .margin(top: 8)
+                                                    .textAlign(TextAlign.Center)
+                                            } else {
+                                                Blank()
+                                                    .height(18)
+                                                    .margin(top: 8)
+                                            }
+
+                                            if (this.visibleChat(1).isMuted) {
+                                                Text("静音")
+                                                    .fontSize(10)
+                                                    .fontColor(0x9AA5B1)
+                                                    .width(100.percent)
+                                                    .textAlign(TextAlign.End)
+                                                    .margin(top: 6)
+                                            }
+                                        }
+                                        .width(70)
+                                        .margin(left: 8)
                                     }
                                     .width(100.percent)
-                                    .padding(left: 18, right: 18, top: 16, bottom: 16)
+                                    .padding(left: 18, right: 18, top: 14, bottom: 14)
                                     .onClick({ _ =>
                                         this.openChat(this.visibleChat(1))
                                     })
@@ -429,27 +637,55 @@ class EntryView {
 
                                         Column() {
                                             Text(this.visibleChat(2).title)
-                                                .fontSize(17)
+                                                .fontSize(16)
                                                 .fontWeight(FontWeight.Medium)
                                                 .width(100.percent)
 
                                             Text(this.visibleChat(2).lastMessagePreview)
-                                                .fontSize(14)
+                                                .fontSize(13)
                                                 .fontColor(0x6B7280)
                                                 .width(100.percent)
                                                 .margin(top: 4)
-
-                                            Text(this.chatMetaLine(this.visibleChat(2)))
-                                                .fontSize(12)
-                                                .fontColor(0x9AA5B1)
-                                                .width(100.percent)
-                                                .margin(top: 6)
                                         }
                                         .layoutWeight(1)
                                         .margin(left: 12)
+
+                                        Column() {
+                                            Text(this.visibleChat(2).lastMessageAtLabel)
+                                                .fontSize(12)
+                                                .fontColor(0x9AA5B1)
+                                                .width(100.percent)
+                                                .textAlign(TextAlign.End)
+
+                                            if (this.visibleChat(2).unreadCount > 0) {
+                                                Text("${this.visibleChat(2).unreadCount}")
+                                                    .fontSize(12)
+                                                    .fontColor(0xFFFFFF)
+                                                    .padding(left: 8, right: 8, top: 2, bottom: 2)
+                                                    .backgroundColor(0x2A8AF6)
+                                                    .borderRadius(10)
+                                                    .margin(top: 8)
+                                                    .textAlign(TextAlign.Center)
+                                            } else {
+                                                Blank()
+                                                    .height(18)
+                                                    .margin(top: 8)
+                                            }
+
+                                            if (this.visibleChat(2).isMuted) {
+                                                Text("静音")
+                                                    .fontSize(10)
+                                                    .fontColor(0x9AA5B1)
+                                                    .width(100.percent)
+                                                    .textAlign(TextAlign.End)
+                                                    .margin(top: 6)
+                                            }
+                                        }
+                                        .width(70)
+                                        .margin(left: 8)
                                     }
                                     .width(100.percent)
-                                    .padding(left: 18, right: 18, top: 16, bottom: 16)
+                                    .padding(left: 18, right: 18, top: 14, bottom: 14)
                                     .onClick({ _ =>
                                         this.openChat(this.visibleChat(2))
                                     })
@@ -475,27 +711,55 @@ class EntryView {
 
                                         Column() {
                                             Text(this.visibleChat(3).title)
-                                                .fontSize(17)
+                                                .fontSize(16)
                                                 .fontWeight(FontWeight.Medium)
                                                 .width(100.percent)
 
                                             Text(this.visibleChat(3).lastMessagePreview)
-                                                .fontSize(14)
+                                                .fontSize(13)
                                                 .fontColor(0x6B7280)
                                                 .width(100.percent)
                                                 .margin(top: 4)
-
-                                            Text(this.chatMetaLine(this.visibleChat(3)))
-                                                .fontSize(12)
-                                                .fontColor(0x9AA5B1)
-                                                .width(100.percent)
-                                                .margin(top: 6)
                                         }
                                         .layoutWeight(1)
                                         .margin(left: 12)
+
+                                        Column() {
+                                            Text(this.visibleChat(3).lastMessageAtLabel)
+                                                .fontSize(12)
+                                                .fontColor(0x9AA5B1)
+                                                .width(100.percent)
+                                                .textAlign(TextAlign.End)
+
+                                            if (this.visibleChat(3).unreadCount > 0) {
+                                                Text("${this.visibleChat(3).unreadCount}")
+                                                    .fontSize(12)
+                                                    .fontColor(0xFFFFFF)
+                                                    .padding(left: 8, right: 8, top: 2, bottom: 2)
+                                                    .backgroundColor(0x2A8AF6)
+                                                    .borderRadius(10)
+                                                    .margin(top: 8)
+                                                    .textAlign(TextAlign.Center)
+                                            } else {
+                                                Blank()
+                                                    .height(18)
+                                                    .margin(top: 8)
+                                            }
+
+                                            if (this.visibleChat(3).isMuted) {
+                                                Text("静音")
+                                                    .fontSize(10)
+                                                    .fontColor(0x9AA5B1)
+                                                    .width(100.percent)
+                                                    .textAlign(TextAlign.End)
+                                                    .margin(top: 6)
+                                            }
+                                        }
+                                        .width(70)
+                                        .margin(left: 8)
                                     }
                                     .width(100.percent)
-                                    .padding(left: 18, right: 18, top: 16, bottom: 16)
+                                    .padding(left: 18, right: 18, top: 14, bottom: 14)
                                     .onClick({ _ =>
                                         this.openChat(this.visibleChat(3))
                                     })
@@ -521,36 +785,436 @@ class EntryView {
 
                                         Column() {
                                             Text(this.visibleChat(4).title)
-                                                .fontSize(17)
+                                                .fontSize(16)
                                                 .fontWeight(FontWeight.Medium)
                                                 .width(100.percent)
 
                                             Text(this.visibleChat(4).lastMessagePreview)
-                                                .fontSize(14)
+                                                .fontSize(13)
                                                 .fontColor(0x6B7280)
                                                 .width(100.percent)
                                                 .margin(top: 4)
-
-                                            Text(this.chatMetaLine(this.visibleChat(4)))
-                                                .fontSize(12)
-                                                .fontColor(0x9AA5B1)
-                                                .width(100.percent)
-                                                .margin(top: 6)
                                         }
                                         .layoutWeight(1)
                                         .margin(left: 12)
+
+                                        Column() {
+                                            Text(this.visibleChat(4).lastMessageAtLabel)
+                                                .fontSize(12)
+                                                .fontColor(0x9AA5B1)
+                                                .width(100.percent)
+                                                .textAlign(TextAlign.End)
+
+                                            if (this.visibleChat(4).unreadCount > 0) {
+                                                Text("${this.visibleChat(4).unreadCount}")
+                                                    .fontSize(12)
+                                                    .fontColor(0xFFFFFF)
+                                                    .padding(left: 8, right: 8, top: 2, bottom: 2)
+                                                    .backgroundColor(0x2A8AF6)
+                                                    .borderRadius(10)
+                                                    .margin(top: 8)
+                                                    .textAlign(TextAlign.Center)
+                                            } else {
+                                                Blank()
+                                                    .height(18)
+                                                    .margin(top: 8)
+                                            }
+
+                                            if (this.visibleChat(4).isMuted) {
+                                                Text("静音")
+                                                    .fontSize(10)
+                                                    .fontColor(0x9AA5B1)
+                                                    .width(100.percent)
+                                                    .textAlign(TextAlign.End)
+                                                    .margin(top: 6)
+                                            }
+                                        }
+                                        .width(70)
+                                        .margin(left: 8)
                                     }
                                     .width(100.percent)
-                                    .padding(left: 18, right: 18, top: 16, bottom: 16)
+                                    .padding(left: 18, right: 18, top: 14, bottom: 14)
                                     .onClick({ _ =>
                                         this.openChat(this.visibleChat(4))
+                                    })
+
+                                    Blank()
+                                        .height(1)
+                                        .margin(left: 78, right: 18)
+                                        .backgroundColor(0xE9EEF4)
+                                }
+
+                                if (this.hasVisibleChat(5)) {
+                                    Row() {
+                                        Text(this.visibleChat(5).avatarLabel)
+                                            .width(48)
+                                            .height(48)
+                                            .lineHeight(48)
+                                            .textAlign(TextAlign.Center)
+                                            .fontSize(14)
+                                            .fontWeight(FontWeight.Medium)
+                                            .backgroundColor(this.visibleChat(5).avatarBackgroundColor)
+                                            .fontColor(this.visibleChat(5).avatarTextColor)
+                                            .borderRadius(24)
+
+                                        Column() {
+                                            Text(this.visibleChat(5).title)
+                                                .fontSize(16)
+                                                .fontWeight(FontWeight.Medium)
+                                                .width(100.percent)
+
+                                            Text(this.visibleChat(5).lastMessagePreview)
+                                                .fontSize(13)
+                                                .fontColor(0x6B7280)
+                                                .width(100.percent)
+                                                .margin(top: 4)
+                                        }
+                                        .layoutWeight(1)
+                                        .margin(left: 12)
+
+                                        Column() {
+                                            Text(this.visibleChat(5).lastMessageAtLabel)
+                                                .fontSize(12)
+                                                .fontColor(0x9AA5B1)
+                                                .width(100.percent)
+                                                .textAlign(TextAlign.End)
+
+                                            if (this.visibleChat(5).unreadCount > 0) {
+                                                Text("${this.visibleChat(5).unreadCount}")
+                                                    .fontSize(12)
+                                                    .fontColor(0xFFFFFF)
+                                                    .padding(left: 8, right: 8, top: 2, bottom: 2)
+                                                    .backgroundColor(0x2A8AF6)
+                                                    .borderRadius(10)
+                                                    .margin(top: 8)
+                                                    .textAlign(TextAlign.Center)
+                                            } else {
+                                                Blank()
+                                                    .height(18)
+                                                    .margin(top: 8)
+                                            }
+
+                                            if (this.visibleChat(5).isMuted) {
+                                                Text("静音")
+                                                    .fontSize(10)
+                                                    .fontColor(0x9AA5B1)
+                                                    .width(100.percent)
+                                                    .textAlign(TextAlign.End)
+                                                    .margin(top: 6)
+                                            }
+                                        }
+                                        .width(70)
+                                        .margin(left: 8)
+                                    }
+                                    .width(100.percent)
+                                    .padding(left: 18, right: 18, top: 14, bottom: 14)
+                                    .onClick({ _ =>
+                                        this.openChat(this.visibleChat(5))
+                                    })
+
+                                    Blank()
+                                        .height(1)
+                                        .margin(left: 78, right: 18)
+                                        .backgroundColor(0xE9EEF4)
+                                }
+
+                                if (this.hasVisibleChat(6)) {
+                                    Row() {
+                                        Text(this.visibleChat(6).avatarLabel)
+                                            .width(48)
+                                            .height(48)
+                                            .lineHeight(48)
+                                            .textAlign(TextAlign.Center)
+                                            .fontSize(14)
+                                            .fontWeight(FontWeight.Medium)
+                                            .backgroundColor(this.visibleChat(6).avatarBackgroundColor)
+                                            .fontColor(this.visibleChat(6).avatarTextColor)
+                                            .borderRadius(24)
+
+                                        Column() {
+                                            Text(this.visibleChat(6).title)
+                                                .fontSize(16)
+                                                .fontWeight(FontWeight.Medium)
+                                                .width(100.percent)
+
+                                            Text(this.visibleChat(6).lastMessagePreview)
+                                                .fontSize(13)
+                                                .fontColor(0x6B7280)
+                                                .width(100.percent)
+                                                .margin(top: 4)
+                                        }
+                                        .layoutWeight(1)
+                                        .margin(left: 12)
+
+                                        Column() {
+                                            Text(this.visibleChat(6).lastMessageAtLabel)
+                                                .fontSize(12)
+                                                .fontColor(0x9AA5B1)
+                                                .width(100.percent)
+                                                .textAlign(TextAlign.End)
+
+                                            if (this.visibleChat(6).unreadCount > 0) {
+                                                Text("${this.visibleChat(6).unreadCount}")
+                                                    .fontSize(12)
+                                                    .fontColor(0xFFFFFF)
+                                                    .padding(left: 8, right: 8, top: 2, bottom: 2)
+                                                    .backgroundColor(0x2A8AF6)
+                                                    .borderRadius(10)
+                                                    .margin(top: 8)
+                                                    .textAlign(TextAlign.Center)
+                                            } else {
+                                                Blank()
+                                                    .height(18)
+                                                    .margin(top: 8)
+                                            }
+
+                                            if (this.visibleChat(6).isMuted) {
+                                                Text("静音")
+                                                    .fontSize(10)
+                                                    .fontColor(0x9AA5B1)
+                                                    .width(100.percent)
+                                                    .textAlign(TextAlign.End)
+                                                    .margin(top: 6)
+                                            }
+                                        }
+                                        .width(70)
+                                        .margin(left: 8)
+                                    }
+                                    .width(100.percent)
+                                    .padding(left: 18, right: 18, top: 14, bottom: 14)
+                                    .onClick({ _ =>
+                                        this.openChat(this.visibleChat(6))
+                                    })
+
+                                    Blank()
+                                        .height(1)
+                                        .margin(left: 78, right: 18)
+                                        .backgroundColor(0xE9EEF4)
+                                }
+
+                                if (this.hasVisibleChat(7)) {
+                                    Row() {
+                                        Text(this.visibleChat(7).avatarLabel)
+                                            .width(48)
+                                            .height(48)
+                                            .lineHeight(48)
+                                            .textAlign(TextAlign.Center)
+                                            .fontSize(14)
+                                            .fontWeight(FontWeight.Medium)
+                                            .backgroundColor(this.visibleChat(7).avatarBackgroundColor)
+                                            .fontColor(this.visibleChat(7).avatarTextColor)
+                                            .borderRadius(24)
+
+                                        Column() {
+                                            Text(this.visibleChat(7).title)
+                                                .fontSize(16)
+                                                .fontWeight(FontWeight.Medium)
+                                                .width(100.percent)
+
+                                            Text(this.visibleChat(7).lastMessagePreview)
+                                                .fontSize(13)
+                                                .fontColor(0x6B7280)
+                                                .width(100.percent)
+                                                .margin(top: 4)
+                                        }
+                                        .layoutWeight(1)
+                                        .margin(left: 12)
+
+                                        Column() {
+                                            Text(this.visibleChat(7).lastMessageAtLabel)
+                                                .fontSize(12)
+                                                .fontColor(0x9AA5B1)
+                                                .width(100.percent)
+                                                .textAlign(TextAlign.End)
+
+                                            if (this.visibleChat(7).unreadCount > 0) {
+                                                Text("${this.visibleChat(7).unreadCount}")
+                                                    .fontSize(12)
+                                                    .fontColor(0xFFFFFF)
+                                                    .padding(left: 8, right: 8, top: 2, bottom: 2)
+                                                    .backgroundColor(0x2A8AF6)
+                                                    .borderRadius(10)
+                                                    .margin(top: 8)
+                                                    .textAlign(TextAlign.Center)
+                                            } else {
+                                                Blank()
+                                                    .height(18)
+                                                    .margin(top: 8)
+                                            }
+
+                                            if (this.visibleChat(7).isMuted) {
+                                                Text("静音")
+                                                    .fontSize(10)
+                                                    .fontColor(0x9AA5B1)
+                                                    .width(100.percent)
+                                                    .textAlign(TextAlign.End)
+                                                    .margin(top: 6)
+                                            }
+                                        }
+                                        .width(70)
+                                        .margin(left: 8)
+                                    }
+                                    .width(100.percent)
+                                    .padding(left: 18, right: 18, top: 14, bottom: 14)
+                                    .onClick({ _ =>
+                                        this.openChat(this.visibleChat(7))
+                                    })
+
+                                    Blank()
+                                        .height(1)
+                                        .margin(left: 78, right: 18)
+                                        .backgroundColor(0xE9EEF4)
+                                }
+
+                                if (this.hasVisibleChat(8)) {
+                                    Row() {
+                                        Text(this.visibleChat(8).avatarLabel)
+                                            .width(48)
+                                            .height(48)
+                                            .lineHeight(48)
+                                            .textAlign(TextAlign.Center)
+                                            .fontSize(14)
+                                            .fontWeight(FontWeight.Medium)
+                                            .backgroundColor(this.visibleChat(8).avatarBackgroundColor)
+                                            .fontColor(this.visibleChat(8).avatarTextColor)
+                                            .borderRadius(24)
+
+                                        Column() {
+                                            Text(this.visibleChat(8).title)
+                                                .fontSize(16)
+                                                .fontWeight(FontWeight.Medium)
+                                                .width(100.percent)
+
+                                            Text(this.visibleChat(8).lastMessagePreview)
+                                                .fontSize(13)
+                                                .fontColor(0x6B7280)
+                                                .width(100.percent)
+                                                .margin(top: 4)
+                                        }
+                                        .layoutWeight(1)
+                                        .margin(left: 12)
+
+                                        Column() {
+                                            Text(this.visibleChat(8).lastMessageAtLabel)
+                                                .fontSize(12)
+                                                .fontColor(0x9AA5B1)
+                                                .width(100.percent)
+                                                .textAlign(TextAlign.End)
+
+                                            if (this.visibleChat(8).unreadCount > 0) {
+                                                Text("${this.visibleChat(8).unreadCount}")
+                                                    .fontSize(12)
+                                                    .fontColor(0xFFFFFF)
+                                                    .padding(left: 8, right: 8, top: 2, bottom: 2)
+                                                    .backgroundColor(0x2A8AF6)
+                                                    .borderRadius(10)
+                                                    .margin(top: 8)
+                                                    .textAlign(TextAlign.Center)
+                                            } else {
+                                                Blank()
+                                                    .height(18)
+                                                    .margin(top: 8)
+                                            }
+
+                                            if (this.visibleChat(8).isMuted) {
+                                                Text("静音")
+                                                    .fontSize(10)
+                                                    .fontColor(0x9AA5B1)
+                                                    .width(100.percent)
+                                                    .textAlign(TextAlign.End)
+                                                    .margin(top: 6)
+                                            }
+                                        }
+                                        .width(70)
+                                        .margin(left: 8)
+                                    }
+                                    .width(100.percent)
+                                    .padding(left: 18, right: 18, top: 14, bottom: 14)
+                                    .onClick({ _ =>
+                                        this.openChat(this.visibleChat(8))
+                                    })
+
+                                    Blank()
+                                        .height(1)
+                                        .margin(left: 78, right: 18)
+                                        .backgroundColor(0xE9EEF4)
+                                }
+
+                                if (this.hasVisibleChat(9)) {
+                                    Row() {
+                                        Text(this.visibleChat(9).avatarLabel)
+                                            .width(48)
+                                            .height(48)
+                                            .lineHeight(48)
+                                            .textAlign(TextAlign.Center)
+                                            .fontSize(14)
+                                            .fontWeight(FontWeight.Medium)
+                                            .backgroundColor(this.visibleChat(9).avatarBackgroundColor)
+                                            .fontColor(this.visibleChat(9).avatarTextColor)
+                                            .borderRadius(24)
+
+                                        Column() {
+                                            Text(this.visibleChat(9).title)
+                                                .fontSize(16)
+                                                .fontWeight(FontWeight.Medium)
+                                                .width(100.percent)
+
+                                            Text(this.visibleChat(9).lastMessagePreview)
+                                                .fontSize(13)
+                                                .fontColor(0x6B7280)
+                                                .width(100.percent)
+                                                .margin(top: 4)
+                                        }
+                                        .layoutWeight(1)
+                                        .margin(left: 12)
+
+                                        Column() {
+                                            Text(this.visibleChat(9).lastMessageAtLabel)
+                                                .fontSize(12)
+                                                .fontColor(0x9AA5B1)
+                                                .width(100.percent)
+                                                .textAlign(TextAlign.End)
+
+                                            if (this.visibleChat(9).unreadCount > 0) {
+                                                Text("${this.visibleChat(9).unreadCount}")
+                                                    .fontSize(12)
+                                                    .fontColor(0xFFFFFF)
+                                                    .padding(left: 8, right: 8, top: 2, bottom: 2)
+                                                    .backgroundColor(0x2A8AF6)
+                                                    .borderRadius(10)
+                                                    .margin(top: 8)
+                                                    .textAlign(TextAlign.Center)
+                                            } else {
+                                                Blank()
+                                                    .height(18)
+                                                    .margin(top: 8)
+                                            }
+
+                                            if (this.visibleChat(9).isMuted) {
+                                                Text("静音")
+                                                    .fontSize(10)
+                                                    .fontColor(0x9AA5B1)
+                                                    .width(100.percent)
+                                                    .textAlign(TextAlign.End)
+                                                    .margin(top: 6)
+                                            }
+                                        }
+                                        .width(70)
+                                        .margin(left: 8)
+                                    }
+                                    .width(100.percent)
+                                    .padding(left: 18, right: 18, top: 14, bottom: 14)
+                                    .onClick({ _ =>
+                                        this.openChat(this.visibleChat(9))
                                     })
                                 }
                             }
                             .width(100.percent)
                         }
+                        }
+                        .width(100.percent)
                     }
-                    .width(100.percent)
+                    .height(100.percent)
                 }
                 .layoutWeight(1)
                 .width(100.percent)
@@ -753,6 +1417,8 @@ class EntryView {
         this.code = ""
         this.searchDraft = ""
         this.entryPlaceholder = ""
+        this.isRefreshing = false
+        this.debugExpanded = false
         this.showLogin("")
         let warning = this.sessionRepo.takeLastWarning()
         if (warning != "") {
@@ -776,6 +1442,10 @@ class EntryView {
         this.listScenario = value
         this.entryPlaceholder = ""
         this.hasReachedListTopOnce = false
+        this.isRefreshing = false
+        if (value != "default") {
+            this.searchDraft = ""
+        }
 
         if (value == "default") {
             this.listStatus = "已切回默认 chat list fixture。"
@@ -794,13 +1464,17 @@ class EntryView {
 
     func applySearch(value: String, note: String): Unit {
         this.searchDraft = value
+        this.listScenario = "default"
         this.entryPlaceholder = ""
+        this.isRefreshing = false
         this.debugMessage = note
     }
 
     func resetSearch(): Unit {
         this.searchDraft = ""
+        this.listScenario = "default"
         this.entryPlaceholder = ""
+        this.isRefreshing = false
         this.debugMessage = "已清除搜索词，列表回到默认过滤。"
     }
 
@@ -810,14 +1484,27 @@ class EntryView {
             return
         }
 
+        if (this.listScenario == "error" || this.listScenario == "empty") {
+            this.listScenario = "default"
+        }
+        this.isRefreshing = true
         this.listStatus = this.chatRepo.refresh(this.searchDraft, this.listScenario)
         if (source == "manual") {
             this.debugMessage = "已通过 debug-only 刷新入口触发 fixture 刷新。"
         } else if (source == "retry") {
             this.debugMessage = "错误态已切回默认数据，并重新触发刷新。"
         } else {
-            this.debugMessage = "列表再次回到顶部后触发了 fixture 刷新。"
+            this.debugMessage = "列表下拉触发了 fixture 刷新。"
         }
+    }
+
+    func finishRefresh(): Unit {
+        if (!this.isRefreshing) {
+            return
+        }
+        this.isRefreshing = false
+        this.listStatus = "已完成刷新，fixture 已更新。"
+        this.debugMessage = "刷新完成，列表已更新 fixture。"
     }
 
     func handleListReachStart(): Unit {
@@ -840,6 +1527,8 @@ class EntryView {
         this.sessionSummary = ""
         this.listStatus = ""
         this.entryPlaceholder = ""
+        this.isRefreshing = false
+        this.debugExpanded = false
     }
 
     func showChatList(current: UserSession, status: String): Unit {
@@ -851,6 +1540,8 @@ class EntryView {
         this.listScenario = "default"
         this.entryPlaceholder = ""
         this.hasReachedListTopOnce = false
+        this.isRefreshing = false
+        this.debugExpanded = false
         let warning = this.sessionRepo.takeLastWarning()
         this.debugMessage = warning
     }
@@ -861,6 +1552,9 @@ class EntryView {
         }
         if (this.listScenario == "error") {
             return "S2 error fixture · ${this.chatRepo.errorMessage()}"
+        }
+        if (this.isRefreshing) {
+            return "S2 refreshing · 列表保持可滚动，刷新结果将更新 fixture。"
         }
 
         let chats = this.chatRepo.visibleChats(this.searchDraft, this.listScenario)
@@ -884,9 +1578,5 @@ class EntryView {
 
     func visibleChat(index: Int64): ChatPreview {
         return this.visibleChats()[index]
-    }
-
-    func chatMetaLine(chat: ChatPreview): String {
-        return "${chat.lastMessageAtLabel} · 未读 ${chat.unreadCount} · ${chat.statusLabel}"
     }
 }
