@@ -41,7 +41,7 @@ class ChatPreview {
 }
 
 class ChatListRepository {
-    let baseChats: ArrayList<ChatPreview> = buildDefaultChats()
+    var baseChats: ArrayList<ChatPreview> = buildDefaultChats()
     var refreshCount: Int64 = 0
 
     func visibleChats(keyword: String, scenario: String): ArrayList<ChatPreview> {
@@ -152,6 +152,44 @@ class ChatListRepository {
 
     func normalizeKeyword(value: String): String {
         return value.trimStart(" ").trimEnd(" ")
+    }
+
+    func updatePreview(chatId: String, preview: String, timeLabel: String): Unit {
+        var targetIndex: Int64 = -1
+        for (idx in 0..(this.baseChats.size - 1)) {
+            let current = this.baseChats[idx]
+            if (current.id == chatId) {
+                targetIndex = idx
+                break
+            }
+        }
+
+        if (targetIndex < 0) {
+            return
+        }
+
+        let current = this.baseChats[targetIndex]
+        let updated = ChatPreview(
+            current.id,
+            current.title,
+            preview,
+            current.unreadCount,
+            timeLabel,
+            current.avatarLabel,
+            current.statusLabel,
+            current.isMuted,
+            current.avatarBackgroundColor,
+            current.avatarTextColor
+        )
+
+        let reordered = ArrayList<ChatPreview>()
+        reordered.add(updated)
+        for (chat in this.baseChats) {
+            if (chat.id != chatId) {
+                reordered.add(chat)
+            }
+        }
+        this.baseChats = reordered
     }
 }
 

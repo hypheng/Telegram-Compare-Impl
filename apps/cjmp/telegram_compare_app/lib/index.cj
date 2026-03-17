@@ -16,6 +16,7 @@ class EntryView {
     let runtimeRoot: String = "/data/user/0/com.example.telegram_compare_cjmp/files/runtime"
     let sessionRepo: SessionRepository = SessionRepository(runtimeRoot)
     let chatRepo: ChatListRepository = ChatListRepository()
+    let detailRepo: ChatDetailRepository = ChatDetailRepository()
 
     @State var screen: String = "restoring"
     @State var phone: String = ""
@@ -31,12 +32,1215 @@ class EntryView {
     @State var debugExpanded: Bool = false
     @State var isRefreshing: Bool = false
 
+    @State var detailChatId: String = ""
+    @State var detailChatTitle: String = ""
+    @State var detailChatSubtitle: String = ""
+    @State var detailScenario: String = "loading"
+    @State var detailStatus: String = ""
+    @State var detailMessages: ArrayList<ChatMessage> = ArrayList<ChatMessage>()
+    @State var composerDraft: String = ""
+    @State var detailDebugExpanded: Bool = false
+    @State var failNextSend: Bool = false
+    @State var pendingSendId: String = ""
+    @State var pendingRetryId: String = ""
+
     public override func aboutToAppear(): Unit {
         this.attemptRestore()
     }
 
     func build() {
-        if (this.screen == "chat-list") {
+        if (this.screen == "chat-detail") {
+            Column() {
+                Column() {
+                    Row() {
+                        Text("返回")
+                            .width(60)
+                            .fontSize(15)
+                            .fontColor(0x2A8AF6)
+                            .onClick({ _ =>
+                                this.returnToList()
+                            })
+
+                        Column() {
+                            Text(this.detailChatTitle)
+                                .fontSize(18)
+                                .fontWeight(FontWeight.Medium)
+                                .width(100.percent)
+                                .textAlign(TextAlign.Center)
+
+                            Text(this.detailChatSubtitle)
+                                .fontSize(12)
+                                .fontColor(0x6B7280)
+                                .width(100.percent)
+                                .textAlign(TextAlign.Center)
+                                .margin(top: 2)
+                        }
+                        .layoutWeight(1)
+
+                        Text("")
+                            .width(60)
+                    }
+                    .width(100.percent)
+                    .alignItems(VerticalAlign.Center)
+
+                    Text(this.detailStatusLine())
+                        .fontSize(12)
+                        .fontColor(0x6B7280)
+                        .width(100.percent)
+                        .margin(top: 10)
+
+                    Button(if (this.detailDebugExpanded) { "收起调试面板" } else { "展开调试面板" })
+                        .width(100.percent)
+                        .height(28)
+                        .margin(top: 8)
+                        .backgroundColor(0xEFF3F7)
+                        .fontColor(0x4B5563)
+                        .fontSize(11)
+                        .onClick({ _ =>
+                            this.detailDebugExpanded = !this.detailDebugExpanded
+                        })
+
+                    if (this.detailDebugExpanded) {
+                        Column() {
+                            Row() {
+                                Button("默认")
+                                    .layoutWeight(1)
+                                    .height(32)
+                                    .backgroundColor(0xDCEBFF)
+                                    .fontColor(0x2A5CAA)
+                                    .fontSize(12)
+                                    .onClick({ _ =>
+                                        this.setDetailScenario("ready")
+                                    })
+
+                                Button("loading")
+                                    .layoutWeight(1)
+                                    .height(32)
+                                    .margin(left: 8)
+                                    .backgroundColor(0xEDE7FF)
+                                    .fontColor(0x6541A8)
+                                    .fontSize(12)
+                                    .onClick({ _ =>
+                                        this.setDetailScenario("loading")
+                                    })
+
+                                Button("error")
+                                    .layoutWeight(1)
+                                    .height(32)
+                                    .margin(left: 8)
+                                    .backgroundColor(0xFFE4E4)
+                                    .fontColor(0xA12A2A)
+                                    .fontSize(12)
+                                    .onClick({ _ =>
+                                        this.setDetailScenario("error")
+                                    })
+                            }
+                            .width(100.percent)
+
+                            Row() {
+                                Button(if (this.failNextSend) { "下一条失败 ✓" } else { "下一条失败" })
+                                    .layoutWeight(1)
+                                    .height(32)
+                                    .backgroundColor(0xFFF2D9)
+                                    .fontColor(0x9A5A00)
+                                    .fontSize(12)
+                                    .onClick({ _ =>
+                                        this.failNextSend = !this.failNextSend
+                                    })
+
+                                Button("完成加载")
+                                    .layoutWeight(1)
+                                    .height(32)
+                                    .margin(left: 8)
+                                    .backgroundColor(0xE7F6EA)
+                                    .fontColor(0x2E7D32)
+                                    .fontSize(12)
+                                    .onClick({ _ =>
+                                        this.finishDetailLoading()
+                                    })
+                            }
+                            .width(100.percent)
+                            .margin(top: 10)
+
+                            Button("快速发送")
+                                .width(100.percent)
+                                .height(32)
+                                .margin(top: 10)
+                                .backgroundColor(0xE7F1FF)
+                                .fontColor(0x2A5CAA)
+                                .fontSize(12)
+                                .onClick({ _ =>
+                                    this.composerDraft = "S3 quick send"
+                                    this.sendMessage()
+                                })
+
+                            if (this.pendingSendId != "") {
+                                Row() {
+                                    Button("完成发送")
+                                        .layoutWeight(1)
+                                        .height(32)
+                                        .backgroundColor(0xE7F6EA)
+                                        .fontColor(0x2E7D32)
+                                        .fontSize(12)
+                                        .onClick({ _ =>
+                                            this.completeSendSuccess()
+                                        })
+
+                                    Button("标记失败")
+                                        .layoutWeight(1)
+                                        .height(32)
+                                        .margin(left: 8)
+                                        .backgroundColor(0xFFE4E4)
+                                        .fontColor(0xA12A2A)
+                                        .fontSize(12)
+                                        .onClick({ _ =>
+                                            this.completeSendFailure()
+                                        })
+                                }
+                                .width(100.percent)
+                                .margin(top: 10)
+                            }
+
+                            if (this.pendingRetryId != "") {
+                                Button("完成重试")
+                                    .width(100.percent)
+                                    .height(32)
+                                    .margin(top: 10)
+                                    .backgroundColor(0xE7F6EA)
+                                    .fontColor(0x2E7D32)
+                                    .fontSize(12)
+                                    .onClick({ _ =>
+                                        this.completeRetry()
+                                    })
+                            }
+                        }
+                        .width(100.percent)
+                        .padding(left: 12, right: 12, top: 10, bottom: 12)
+                        .margin(top: 12)
+                        .backgroundColor(0xF7F9FC)
+                        .borderRadius(16)
+                    }
+                }
+                .width(100.percent)
+                .padding(20)
+                .backgroundColor(0xFFFFFF)
+                .borderRadius(24)
+
+                Column() {
+                    Scroll() {
+                        Column() {
+                            if (this.detailScenario == "loading") {
+                                Column() {
+                                    Blank()
+                                        .width(70.percent)
+                                        .height(16)
+                                        .backgroundColor(0xE6ECF4)
+                                        .borderRadius(8)
+                                        .margin(bottom: 8)
+
+                                    Blank()
+                                        .width(55.percent)
+                                        .height(14)
+                                        .backgroundColor(0xE6ECF4)
+                                        .borderRadius(8)
+                                        .margin(bottom: 12)
+
+                                    Blank()
+                                        .width(62.percent)
+                                        .height(16)
+                                        .backgroundColor(0xE6ECF4)
+                                        .borderRadius(8)
+                                        .margin(bottom: 8)
+
+                                    Blank()
+                                        .width(48.percent)
+                                        .height(14)
+                                        .backgroundColor(0xE6ECF4)
+                                        .borderRadius(8)
+                                }
+                                .width(100.percent)
+                                .padding(18)
+                            } else if (this.detailScenario == "error") {
+                                Column() {
+                                    Text("加载失败")
+                                        .fontSize(20)
+                                        .fontWeight(FontWeight.Medium)
+                                        .width(100.percent)
+
+                                    Text("Fixture 加载失败。请重试或切回默认数据。")
+                                        .fontSize(14)
+                                        .fontColor(0x6B7280)
+                                        .width(100.percent)
+                                        .margin(top: 8)
+
+                                    Button("重试")
+                                        .width(100.percent)
+                                        .height(40)
+                                        .margin(top: 14)
+                                        .backgroundColor(0xDCEBFF)
+                                        .fontColor(0x2A5CAA)
+                                        .onClick({ _ =>
+                                            this.setDetailScenario("ready")
+                                        })
+                                }
+                                .width(100.percent)
+                                .padding(18)
+                            } else {
+                                Column() {
+                                    if (this.hasDetailMessage(0)) {
+                                        if (this.detailMessage(0).isOutgoing) {
+                                            Row() {
+                                                Blank()
+                                                    .layoutWeight(1)
+
+                                                Column() {
+                                                    Text(this.detailMessage(0).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(0).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .textAlign(TextAlign.End)
+                                                        .margin(top: 6)
+
+                                                    if (this.detailMessage(0).status == "failed") {
+                                                        Button("重试")
+                                                            .height(28)
+                                                            .margin(top: 8)
+                                                            .backgroundColor(0xDCEBFF)
+                                                            .fontColor(0x2A5CAA)
+                                                            .fontSize(12)
+                                                            .onClick({ _ =>
+                                                                this.retryMessage(this.detailMessage(0).id)
+                                                            })
+                                                    }
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xDCF2FF)
+                                                .borderRadius(16)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        } else {
+                                            Row() {
+                                                Column() {
+                                                    Text(this.detailMessage(0).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(0).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .margin(top: 6)
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xFFFFFF)
+                                                .borderRadius(16)
+
+                                                Blank()
+                                                    .layoutWeight(1)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        }
+                                    }
+
+                                    if (this.hasDetailMessage(1)) {
+                                        if (this.detailMessage(1).isOutgoing) {
+                                            Row() {
+                                                Blank()
+                                                    .layoutWeight(1)
+
+                                                Column() {
+                                                    Text(this.detailMessage(1).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(1).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .textAlign(TextAlign.End)
+                                                        .margin(top: 6)
+
+                                                    if (this.detailMessage(1).status == "failed") {
+                                                        Button("重试")
+                                                            .height(28)
+                                                            .margin(top: 8)
+                                                            .backgroundColor(0xDCEBFF)
+                                                            .fontColor(0x2A5CAA)
+                                                            .fontSize(12)
+                                                            .onClick({ _ =>
+                                                                this.retryMessage(this.detailMessage(1).id)
+                                                            })
+                                                    }
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xDCF2FF)
+                                                .borderRadius(16)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        } else {
+                                            Row() {
+                                                Column() {
+                                                    Text(this.detailMessage(1).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(1).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .margin(top: 6)
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xFFFFFF)
+                                                .borderRadius(16)
+
+                                                Blank()
+                                                    .layoutWeight(1)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        }
+                                    }
+
+                                    if (this.hasDetailMessage(2)) {
+                                        if (this.detailMessage(2).isOutgoing) {
+                                            Row() {
+                                                Blank()
+                                                    .layoutWeight(1)
+
+                                                Column() {
+                                                    Text(this.detailMessage(2).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(2).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .textAlign(TextAlign.End)
+                                                        .margin(top: 6)
+
+                                                    if (this.detailMessage(2).status == "failed") {
+                                                        Button("重试")
+                                                            .height(28)
+                                                            .margin(top: 8)
+                                                            .backgroundColor(0xDCEBFF)
+                                                            .fontColor(0x2A5CAA)
+                                                            .fontSize(12)
+                                                            .onClick({ _ =>
+                                                                this.retryMessage(this.detailMessage(2).id)
+                                                            })
+                                                    }
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xDCF2FF)
+                                                .borderRadius(16)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        } else {
+                                            Row() {
+                                                Column() {
+                                                    Text(this.detailMessage(2).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(2).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .margin(top: 6)
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xFFFFFF)
+                                                .borderRadius(16)
+
+                                                Blank()
+                                                    .layoutWeight(1)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        }
+                                    }
+
+                                    if (this.hasDetailMessage(3)) {
+                                        if (this.detailMessage(3).isOutgoing) {
+                                            Row() {
+                                                Blank()
+                                                    .layoutWeight(1)
+
+                                                Column() {
+                                                    Text(this.detailMessage(3).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(3).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .textAlign(TextAlign.End)
+                                                        .margin(top: 6)
+
+                                                    if (this.detailMessage(3).status == "failed") {
+                                                        Button("重试")
+                                                            .height(28)
+                                                            .margin(top: 8)
+                                                            .backgroundColor(0xDCEBFF)
+                                                            .fontColor(0x2A5CAA)
+                                                            .fontSize(12)
+                                                            .onClick({ _ =>
+                                                                this.retryMessage(this.detailMessage(3).id)
+                                                            })
+                                                    }
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xDCF2FF)
+                                                .borderRadius(16)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        } else {
+                                            Row() {
+                                                Column() {
+                                                    Text(this.detailMessage(3).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(3).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .margin(top: 6)
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xFFFFFF)
+                                                .borderRadius(16)
+
+                                                Blank()
+                                                    .layoutWeight(1)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        }
+                                    }
+
+                                    if (this.hasDetailMessage(4)) {
+                                        if (this.detailMessage(4).isOutgoing) {
+                                            Row() {
+                                                Blank()
+                                                    .layoutWeight(1)
+
+                                                Column() {
+                                                    Text(this.detailMessage(4).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(4).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .textAlign(TextAlign.End)
+                                                        .margin(top: 6)
+
+                                                    if (this.detailMessage(4).status == "failed") {
+                                                        Button("重试")
+                                                            .height(28)
+                                                            .margin(top: 8)
+                                                            .backgroundColor(0xDCEBFF)
+                                                            .fontColor(0x2A5CAA)
+                                                            .fontSize(12)
+                                                            .onClick({ _ =>
+                                                                this.retryMessage(this.detailMessage(4).id)
+                                                            })
+                                                    }
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xDCF2FF)
+                                                .borderRadius(16)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        } else {
+                                            Row() {
+                                                Column() {
+                                                    Text(this.detailMessage(4).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(4).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .margin(top: 6)
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xFFFFFF)
+                                                .borderRadius(16)
+
+                                                Blank()
+                                                    .layoutWeight(1)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        }
+                                    }
+
+                                    if (this.hasDetailMessage(5)) {
+                                        if (this.detailMessage(5).isOutgoing) {
+                                            Row() {
+                                                Blank()
+                                                    .layoutWeight(1)
+
+                                                Column() {
+                                                    Text(this.detailMessage(5).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(5).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .textAlign(TextAlign.End)
+                                                        .margin(top: 6)
+
+                                                    if (this.detailMessage(5).status == "failed") {
+                                                        Button("重试")
+                                                            .height(28)
+                                                            .margin(top: 8)
+                                                            .backgroundColor(0xDCEBFF)
+                                                            .fontColor(0x2A5CAA)
+                                                            .fontSize(12)
+                                                            .onClick({ _ =>
+                                                                this.retryMessage(this.detailMessage(5).id)
+                                                            })
+                                                    }
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xDCF2FF)
+                                                .borderRadius(16)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        } else {
+                                            Row() {
+                                                Column() {
+                                                    Text(this.detailMessage(5).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(5).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .margin(top: 6)
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xFFFFFF)
+                                                .borderRadius(16)
+
+                                                Blank()
+                                                    .layoutWeight(1)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        }
+                                    }
+
+                                    if (this.hasDetailMessage(6)) {
+                                        if (this.detailMessage(6).isOutgoing) {
+                                            Row() {
+                                                Blank()
+                                                    .layoutWeight(1)
+
+                                                Column() {
+                                                    Text(this.detailMessage(6).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(6).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .textAlign(TextAlign.End)
+                                                        .margin(top: 6)
+
+                                                    if (this.detailMessage(6).status == "failed") {
+                                                        Button("重试")
+                                                            .height(28)
+                                                            .margin(top: 8)
+                                                            .backgroundColor(0xDCEBFF)
+                                                            .fontColor(0x2A5CAA)
+                                                            .fontSize(12)
+                                                            .onClick({ _ =>
+                                                                this.retryMessage(this.detailMessage(6).id)
+                                                            })
+                                                    }
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xDCF2FF)
+                                                .borderRadius(16)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        } else {
+                                            Row() {
+                                                Column() {
+                                                    Text(this.detailMessage(6).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(6).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .margin(top: 6)
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xFFFFFF)
+                                                .borderRadius(16)
+
+                                                Blank()
+                                                    .layoutWeight(1)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        }
+                                    }
+
+                                    if (this.hasDetailMessage(7)) {
+                                        if (this.detailMessage(7).isOutgoing) {
+                                            Row() {
+                                                Blank()
+                                                    .layoutWeight(1)
+
+                                                Column() {
+                                                    Text(this.detailMessage(7).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(7).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .textAlign(TextAlign.End)
+                                                        .margin(top: 6)
+
+                                                    if (this.detailMessage(7).status == "failed") {
+                                                        Button("重试")
+                                                            .height(28)
+                                                            .margin(top: 8)
+                                                            .backgroundColor(0xDCEBFF)
+                                                            .fontColor(0x2A5CAA)
+                                                            .fontSize(12)
+                                                            .onClick({ _ =>
+                                                                this.retryMessage(this.detailMessage(7).id)
+                                                            })
+                                                    }
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xDCF2FF)
+                                                .borderRadius(16)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        } else {
+                                            Row() {
+                                                Column() {
+                                                    Text(this.detailMessage(7).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(7).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .margin(top: 6)
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xFFFFFF)
+                                                .borderRadius(16)
+
+                                                Blank()
+                                                    .layoutWeight(1)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        }
+                                    }
+
+                                    if (this.hasDetailMessage(8)) {
+                                        if (this.detailMessage(8).isOutgoing) {
+                                            Row() {
+                                                Blank()
+                                                    .layoutWeight(1)
+
+                                                Column() {
+                                                    Text(this.detailMessage(8).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(8).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .textAlign(TextAlign.End)
+                                                        .margin(top: 6)
+
+                                                    if (this.detailMessage(8).status == "failed") {
+                                                        Button("重试")
+                                                            .height(28)
+                                                            .margin(top: 8)
+                                                            .backgroundColor(0xDCEBFF)
+                                                            .fontColor(0x2A5CAA)
+                                                            .fontSize(12)
+                                                            .onClick({ _ =>
+                                                                this.retryMessage(this.detailMessage(8).id)
+                                                            })
+                                                    }
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xDCF2FF)
+                                                .borderRadius(16)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        } else {
+                                            Row() {
+                                                Column() {
+                                                    Text(this.detailMessage(8).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(8).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .margin(top: 6)
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xFFFFFF)
+                                                .borderRadius(16)
+
+                                                Blank()
+                                                    .layoutWeight(1)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        }
+                                    }
+
+                                    if (this.hasDetailMessage(9)) {
+                                        if (this.detailMessage(9).isOutgoing) {
+                                            Row() {
+                                                Blank()
+                                                    .layoutWeight(1)
+
+                                                Column() {
+                                                    Text(this.detailMessage(9).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(9).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .textAlign(TextAlign.End)
+                                                        .margin(top: 6)
+
+                                                    if (this.detailMessage(9).status == "failed") {
+                                                        Button("重试")
+                                                            .height(28)
+                                                            .margin(top: 8)
+                                                            .backgroundColor(0xDCEBFF)
+                                                            .fontColor(0x2A5CAA)
+                                                            .fontSize(12)
+                                                            .onClick({ _ =>
+                                                                this.retryMessage(this.detailMessage(9).id)
+                                                            })
+                                                    }
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xDCF2FF)
+                                                .borderRadius(16)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        } else {
+                                            Row() {
+                                                Column() {
+                                                    Text(this.detailMessage(9).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(9).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .margin(top: 6)
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xFFFFFF)
+                                                .borderRadius(16)
+
+                                                Blank()
+                                                    .layoutWeight(1)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        }
+                                    }
+
+                                    if (this.hasDetailMessage(10)) {
+                                        if (this.detailMessage(10).isOutgoing) {
+                                            Row() {
+                                                Blank()
+                                                    .layoutWeight(1)
+
+                                                Column() {
+                                                    Text(this.detailMessage(10).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(10).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .textAlign(TextAlign.End)
+                                                        .margin(top: 6)
+
+                                                    if (this.detailMessage(10).status == "failed") {
+                                                        Button("重试")
+                                                            .height(28)
+                                                            .margin(top: 8)
+                                                            .backgroundColor(0xDCEBFF)
+                                                            .fontColor(0x2A5CAA)
+                                                            .fontSize(12)
+                                                            .onClick({ _ =>
+                                                                this.retryMessage(this.detailMessage(10).id)
+                                                            })
+                                                    }
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xDCF2FF)
+                                                .borderRadius(16)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        } else {
+                                            Row() {
+                                                Column() {
+                                                    Text(this.detailMessage(10).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(10).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .margin(top: 6)
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xFFFFFF)
+                                                .borderRadius(16)
+
+                                                Blank()
+                                                    .layoutWeight(1)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        }
+                                    }
+
+                                    if (this.hasDetailMessage(11)) {
+                                        if (this.detailMessage(11).isOutgoing) {
+                                            Row() {
+                                                Blank()
+                                                    .layoutWeight(1)
+
+                                                Column() {
+                                                    Text(this.detailMessage(11).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(11).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .textAlign(TextAlign.End)
+                                                        .margin(top: 6)
+
+                                                    if (this.detailMessage(11).status == "failed") {
+                                                        Button("重试")
+                                                            .height(28)
+                                                            .margin(top: 8)
+                                                            .backgroundColor(0xDCEBFF)
+                                                            .fontColor(0x2A5CAA)
+                                                            .fontSize(12)
+                                                            .onClick({ _ =>
+                                                                this.retryMessage(this.detailMessage(11).id)
+                                                            })
+                                                    }
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xDCF2FF)
+                                                .borderRadius(16)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        } else {
+                                            Row() {
+                                                Column() {
+                                                    Text(this.detailMessage(11).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(11).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .margin(top: 6)
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xFFFFFF)
+                                                .borderRadius(16)
+
+                                                Blank()
+                                                    .layoutWeight(1)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        }
+                                    }
+
+                                    if (this.hasDetailMessage(12)) {
+                                        if (this.detailMessage(12).isOutgoing) {
+                                            Row() {
+                                                Blank()
+                                                    .layoutWeight(1)
+
+                                                Column() {
+                                                    Text(this.detailMessage(12).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(12).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .textAlign(TextAlign.End)
+                                                        .margin(top: 6)
+
+                                                    if (this.detailMessage(12).status == "failed") {
+                                                        Button("重试")
+                                                            .height(28)
+                                                            .margin(top: 8)
+                                                            .backgroundColor(0xDCEBFF)
+                                                            .fontColor(0x2A5CAA)
+                                                            .fontSize(12)
+                                                            .onClick({ _ =>
+                                                                this.retryMessage(this.detailMessage(12).id)
+                                                            })
+                                                    }
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xDCF2FF)
+                                                .borderRadius(16)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        } else {
+                                            Row() {
+                                                Column() {
+                                                    Text(this.detailMessage(12).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(12).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .margin(top: 6)
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xFFFFFF)
+                                                .borderRadius(16)
+
+                                                Blank()
+                                                    .layoutWeight(1)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        }
+                                    }
+
+                                    if (this.hasDetailMessage(13)) {
+                                        if (this.detailMessage(13).isOutgoing) {
+                                            Row() {
+                                                Blank()
+                                                    .layoutWeight(1)
+
+                                                Column() {
+                                                    Text(this.detailMessage(13).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(13).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .textAlign(TextAlign.End)
+                                                        .margin(top: 6)
+
+                                                    if (this.detailMessage(13).status == "failed") {
+                                                        Button("重试")
+                                                            .height(28)
+                                                            .margin(top: 8)
+                                                            .backgroundColor(0xDCEBFF)
+                                                            .fontColor(0x2A5CAA)
+                                                            .fontSize(12)
+                                                            .onClick({ _ =>
+                                                                this.retryMessage(this.detailMessage(13).id)
+                                                            })
+                                                    }
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xDCF2FF)
+                                                .borderRadius(16)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        } else {
+                                            Row() {
+                                                Column() {
+                                                    Text(this.detailMessage(13).text)
+                                                        .fontSize(14)
+                                                        .fontColor(0x1F2933)
+                                                        .width(100.percent)
+
+                                                    Text(this.detailMessage(13).statusLabel())
+                                                        .fontSize(11)
+                                                        .fontColor(0x6B7280)
+                                                        .width(100.percent)
+                                                        .margin(top: 6)
+                                                }
+                                                .width(78.percent)
+                                                .padding(left: 12, right: 12, top: 10, bottom: 10)
+                                                .backgroundColor(0xFFFFFF)
+                                                .borderRadius(16)
+
+                                                Blank()
+                                                    .layoutWeight(1)
+                                            }
+                                            .width(100.percent)
+                                            .padding(left: 18, right: 18, top: 8, bottom: 8)
+                                        }
+                                    }
+                                }
+                                .width(100.percent)
+                            }
+                        }
+                        .width(100.percent)
+                    }
+                    .height(100.percent)
+                }
+                .layoutWeight(1)
+                .width(100.percent)
+                .margin(top: 12)
+                .backgroundColor(0xFFFFFF)
+                .borderRadius(24)
+
+                Row() {
+                    TextInput(placeholder: "输入消息")
+                        .layoutWeight(1)
+                        .height(44)
+                        .padding(left: 16, right: 16)
+                        .backgroundColor(0xEDF2F7)
+                        .borderRadius(22)
+                        .onChange({ value: String =>
+                            this.composerDraft = value
+                        })
+
+                    Button("发送")
+                        .height(44)
+                        .margin(left: 10)
+                        .backgroundColor(0x2A8AF6)
+                        .fontColor(0xFFFFFF)
+                        .onClick({ _ =>
+                            this.sendMessage()
+                        })
+                }
+                .width(100.percent)
+                .padding(left: 12, right: 12, top: 12, bottom: 12)
+                .margin(top: 12)
+                .backgroundColor(0xFFFFFF)
+                .borderRadius(24)
+            }
+            .width(100.percent)
+            .height(100.percent)
+            .padding(left: 16, right: 16, top: 16, bottom: 16)
+            .backgroundColor(0xF4F7FB)
+        } else if (this.screen == "chat-list") {
             Column() {
                 Column() {
                     Row() {
@@ -1430,6 +2634,17 @@ class EntryView {
         this.entryPlaceholder = ""
         this.isRefreshing = false
         this.debugExpanded = false
+        this.detailChatId = ""
+        this.detailChatTitle = ""
+        this.detailChatSubtitle = ""
+        this.detailScenario = "loading"
+        this.detailMessages = ArrayList<ChatMessage>()
+        this.detailStatus = ""
+        this.composerDraft = ""
+        this.pendingSendId = ""
+        this.pendingRetryId = ""
+        this.detailDebugExpanded = false
+        this.failNextSend = false
         this.showLogin("")
         let warning = this.sessionRepo.takeLastWarning()
         if (warning != "") {
@@ -1529,8 +2744,172 @@ class EntryView {
     }
 
     func openChat(chat: ChatPreview): Unit {
-        this.entryPlaceholder = "已选中 ${chat.title}。`S3` 真实聊天详情仍待在 CJMP 侧继续交付。"
-        this.debugMessage = "当前只闭合 `S2` entry placeholder，不把点击误判为 `S3` 已完成。"
+        this.detailChatId = chat.id
+        this.detailChatTitle = chat.title
+        this.detailChatSubtitle = chat.statusLabel
+        this.detailScenario = "loading"
+        let thread = this.detailRepo.loadThread(chat.id, chat.title, chat.statusLabel)
+        this.detailMessages = thread.messages
+        this.detailStatus = "S3 detail loading demo · 点击完成加载进入详情默认态。"
+        this.composerDraft = ""
+        this.pendingSendId = ""
+        this.pendingRetryId = ""
+        this.failNextSend = false
+        this.detailDebugExpanded = false
+        this.entryPlaceholder = ""
+        this.debugMessage = ""
+        this.screen = "chat-detail"
+    }
+
+    func returnToList(): Unit {
+        this.screen = "chat-list"
+        this.detailDebugExpanded = false
+        this.listStatus = "已从 S3 返回会话列表。"
+    }
+
+    func setDetailScenario(value: String): Unit {
+        this.detailScenario = value
+        this.detailDebugExpanded = false
+        if (value == "loading") {
+            this.detailStatus = "S3 detail loading demo · 点击完成加载进入详情默认态。"
+        } else if (value == "error") {
+            this.detailStatus = "Fixture 加载失败。"
+        } else {
+            this.detailStatus = "S3 ready · 消息流与 composer 已加载。"
+        }
+    }
+
+    func finishDetailLoading(): Unit {
+        if (this.detailScenario == "loading") {
+            this.setDetailScenario("ready")
+        }
+    }
+
+    func sendMessage(): Unit {
+        if (this.detailScenario != "ready") {
+            this.detailStatus = "当前不是 ready 状态，请先完成加载。"
+            return
+        }
+        let trimmed = this.composerDraft.trimStart(" ").trimEnd(" ")
+        if (trimmed == "") {
+            this.detailStatus = "请输入非空文本后再发送。"
+            return
+        }
+
+        let message = ChatMessage(this.detailRepo.nextMessageId(), trimmed, true, "刚刚", "sending")
+        this.appendDetailMessage(message)
+        this.composerDraft = ""
+        this.pendingSendId = message.id
+        this.detailStatus = "消息已进入发送中状态。"
+        if (this.failNextSend) {
+            this.detailStatus = "下一条发送将失败，可标记失败或完成发送。"
+            this.failNextSend = false
+        }
+    }
+
+    func completeSendSuccess(): Unit {
+        if (this.pendingSendId == "") {
+            return
+        }
+        let messageId = this.pendingSendId
+        let messageText = this.messageTextById(messageId)
+        this.updateDetailMessageStatus(messageId, "sent")
+        if (messageText != "") {
+            this.chatRepo.updatePreview(this.detailChatId, messageText, "刚刚")
+        }
+        this.pendingSendId = ""
+        this.detailStatus = "发送成功，已回写会话列表预览。"
+    }
+
+    func completeSendFailure(): Unit {
+        if (this.pendingSendId == "") {
+            return
+        }
+        let messageId = this.pendingSendId
+        this.updateDetailMessageStatus(messageId, "failed")
+        this.pendingSendId = ""
+        this.detailStatus = "发送失败，可点击消息内的 retry。"
+    }
+
+    func retryMessage(messageId: String): Unit {
+        if (this.pendingRetryId != "") {
+            this.detailStatus = "已有重试任务在进行。"
+            return
+        }
+        this.updateDetailMessageStatus(messageId, "retrying")
+        this.pendingRetryId = messageId
+        this.detailStatus = "失败消息进入重试中。"
+    }
+
+    func completeRetry(): Unit {
+        if (this.pendingRetryId == "") {
+            return
+        }
+        let messageId = this.pendingRetryId
+        let messageText = this.messageTextById(messageId)
+        this.updateDetailMessageStatus(messageId, "sent")
+        if (messageText != "") {
+            this.chatRepo.updatePreview(this.detailChatId, messageText, "刚刚")
+        }
+        this.pendingRetryId = ""
+        this.detailStatus = "重试成功，消息已转为已发送。"
+    }
+
+    func appendDetailMessage(message: ChatMessage): Unit {
+        let updated = ArrayList<ChatMessage>()
+        for (item in this.detailMessages) {
+            updated.add(item)
+        }
+        updated.add(message)
+        this.detailMessages = updated
+    }
+
+    func updateDetailMessageStatus(messageId: String, status: String): Unit {
+        let updated = ArrayList<ChatMessage>()
+        for (item in this.detailMessages) {
+            if (item.id == messageId) {
+                updated.add(item.withStatus(status, "刚刚"))
+            } else {
+                updated.add(item)
+            }
+        }
+        this.detailMessages = updated
+    }
+
+    func messageTextById(messageId: String): String {
+        for (item in this.detailMessages) {
+            if (item.id == messageId) {
+                return item.text
+            }
+        }
+        return ""
+    }
+
+    func detailStatusLine(): String {
+        if (this.detailScenario == "loading") {
+            return "S3 detail loading · 顶部与 composer 固定，消息区骨架等待加载。"
+        }
+        if (this.detailScenario == "error") {
+            return "S3 error fixture · ${this.detailStatus}"
+        }
+        if (this.pendingRetryId != "") {
+            return "S3 retrying · 失败消息正在重试。"
+        }
+        if (this.pendingSendId != "") {
+            return "S3 sending · 新消息处于发送中状态。"
+        }
+        if (this.detailStatus != "") {
+            return this.detailStatus
+        }
+        return "S3 ready · 消息流与 composer 已加载。"
+    }
+
+    func hasDetailMessage(index: Int64): Bool {
+        return this.detailMessages.size > index
+    }
+
+    func detailMessage(index: Int64): ChatMessage {
+        return this.detailMessages[index]
     }
 
     func showLogin(message: String): Unit {
@@ -1541,6 +2920,17 @@ class EntryView {
         this.entryPlaceholder = ""
         this.isRefreshing = false
         this.debugExpanded = false
+        this.detailChatId = ""
+        this.detailChatTitle = ""
+        this.detailChatSubtitle = ""
+        this.detailScenario = "loading"
+        this.detailMessages = ArrayList<ChatMessage>()
+        this.detailStatus = ""
+        this.composerDraft = ""
+        this.pendingSendId = ""
+        this.pendingRetryId = ""
+        this.detailDebugExpanded = false
+        this.failNextSend = false
     }
 
     func showChatList(current: UserSession, status: String): Unit {
@@ -1554,6 +2944,17 @@ class EntryView {
         this.hasReachedListTopOnce = false
         this.isRefreshing = false
         this.debugExpanded = false
+        this.detailChatId = ""
+        this.detailChatTitle = ""
+        this.detailChatSubtitle = ""
+        this.detailScenario = "loading"
+        this.detailMessages = ArrayList<ChatMessage>()
+        this.detailStatus = ""
+        this.composerDraft = ""
+        this.pendingSendId = ""
+        this.pendingRetryId = ""
+        this.detailDebugExpanded = false
+        this.failNextSend = false
         let warning = this.sessionRepo.takeLastWarning()
         this.debugMessage = warning
     }

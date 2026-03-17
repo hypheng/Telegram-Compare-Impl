@@ -32,6 +32,7 @@
 - 当前阶段继续允许 fixture-backed message repository。
 - 发送中状态可由客户端先行表达，发送成功或失败由 demo repository 返回结果。
 - 为了覆盖失败路径，demo build 可以保留 `下一条发送失败` 的 debug-only 控件；该控件不计入最终产品交互。
+- debug-only 控件需支持一键收起或自动隐藏，以便生成干净的设备侧证据截图。
 - 默认 fixture 需要包含足够多的历史消息，以验证消息区滚动、长短气泡节奏和不同发送状态。
 - 当前阶段如果真实 Figma 文件仍未就位，可继续用 repo-side handoff brief 代理 `D2`，但必须在 evidence 中明确缺口。
 
