@@ -26,6 +26,7 @@
 - 顶部导航、状态反馈和 composer 保持固定。
 - 只有消息流 viewport 可滚动。
 - debug-only 控件要保持紧凑，不能把 composer 顶成中部卡片布局。
+- debug-only 控件需要可一键收起或自动隐藏，便于截取干净的设备证据。
 - 聚焦 composer 或弹出系统键盘时，页面必须 `resize` 而不是整页 `pan`。
 - 键盘弹出后，顶部导航和 composer 仍需留在视口内，只允许消息流 viewport 被压缩。
 

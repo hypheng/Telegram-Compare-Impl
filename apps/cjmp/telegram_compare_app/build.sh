@@ -112,7 +112,7 @@ copy_libs() {
         while IFS= read -r -d '' file; do
             echo "copy: $(basename "$file")"
             cp -f "$file" "$output_dir/"
-            ((file_count++))
+            file_count=$((file_count + 1))
         done < <(find "$input_dir" -maxdepth 1 -name "*.${ext}" -type f -print0 2>/dev/null)
     done
 
@@ -172,7 +172,13 @@ copy_dependencies() {
         if [[ -f "$dep_path" ]]; then
             local dep_file_name
             dep_file_name=$(basename "$dep_path")
-            cp -f "$dep_path" "$output_dir/" && ((copied_count++))
+            local dest_path="$output_dir/$dep_file_name"
+            if [[ "$dep_path" == "$dest_path" ]]; then
+                continue
+            fi
+            if cp -f "$dep_path" "$output_dir/"; then
+                copied_count=$((copied_count + 1))
+            fi
         fi
     done < "$dep_file"
 
