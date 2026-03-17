@@ -4,17 +4,17 @@
 
 项目现在采用 `spec -> design -> figma handoff -> implementation -> evidence` 的顺序，而不是直接从需求跳到代码。
 
-- `S1 -> S2 -> S3 -> S4` 仍然是主路径切片顺序。
-- `S5-S8` 保持 backlog，等基础聊天闭环稳定后再展开。
+- `S1 -> S2 -> S3 -> S4 -> S5 -> S6 -> S7 -> S8` 仍然是主路径切片顺序。
+- 当前剩余 backlog 只剩 `S9 AI 助手增强能力`。
 - `framework-agnostic-spec/interface-design/` 仍然是仓库内第一真相源。
 - Figma 现在被提升为显式交付阶段，用于视觉稿、prototype、ready-for-dev frame/node 和 MCP 上下文。
 
 当前项目状态已经进入:
 
-- `S1-S4` 的 KMP 核心聊天工作流已完成代码、构建和设备验收
-- `S1-S4` 的 Figma handoff 仍因缺少可编辑文件而未闭环
-- `S1` 的 CJMP 已通过 self-render 等价证据完成 `E1`，`S2-S4` 仍保持 deferred
-- 下一条是否继续推进 `S5-S8 backlog`，取决于产品范围决策，而不是 KMP 主路径未完成
+- `S1-S8` 的 KMP 主路径、搜索、设置、媒体与联系人路径已完成代码、构建和设备验收
+- `S1-S8` 的 Figma handoff 仍因缺少可编辑文件而未闭环
+- `S1` 的 CJMP 已通过 self-render 等价证据完成 `E1`，`S2-S8` 在当前范围内仍保持 deferred
+- 当前剩余 backlog 只剩 `S9 AI 助手增强能力`
 
 ## 分阶段路线
 
@@ -35,6 +35,10 @@
 | `S2` 会话列表 | `E1` 已完成，`D2` blocked，`I2` deferred | 已有 repo 内 UI 定义和 handoff brief，但缺真实 Figma file / frame links | KMP 已验收；CJMP 当前不作为闭环要求 | 设备侧已完成 default / search / refresh / empty / error 验收 |
 | `S3` 单聊详情与文本发送 | `E1` 已完成，`D2` blocked，`I2` deferred | 已有 repo 内 UI 定义和 handoff brief，但缺真实 Figma file / frame links | KMP 已验收；CJMP 当前不作为闭环要求 | KMP 主用户工作流现已从登录贯通到详情发送 |
 | `S4` 本地缓存与离线恢复 | `E1` 已完成，`D2` blocked，`I2` deferred | 已有 repo 内 UI 定义和 handoff brief，但缺真实 Figma file / frame links | KMP 已验收；CJMP 当前不作为闭环要求 | KMP 现已具备列表/详情 snapshot 恢复、清空缓存回退和 logout 清缓存路径 |
+| `S5` 搜索会话 / 消息 | `E1` 已完成，`D2` blocked，`I2` deferred | 已有 repo 内 UI 定义和 handoff brief，但缺真实 Figma file / frame links | KMP 已验收；CJMP 当前不作为闭环要求 | KMP 现已具备独立搜索结果页、chat/message 结果跳转和搜索返回路径 |
+| `S6` 设置与个人资料 | `E1` 已完成，`D2` blocked，`I2` deferred | 已有 repo 内 UI 定义和 handoff brief，但缺真实 Figma file / frame links | KMP 已验收；CJMP 当前不作为闭环要求 | KMP 现已具备真实 `Settings` 页、偏好持久化和设置页 logout |
+| `S7` 媒体消息 | `E1` 已完成，`D2` blocked，`I2` deferred | 已有 repo 内 UI 定义和 handoff brief，但缺真实 Figma file / frame links | KMP 已验收；CJMP 当前不作为闭环要求 | KMP 现已具备图片消息渲染、media picker、媒体发送和恢复路径 |
+| `S8` Contacts 联系人 | `E1` 已完成，`D2` blocked，`I2` deferred | 已有 repo 内 UI 定义和 handoff brief，但缺真实 Figma file / frame links | KMP 已验收；CJMP 当前不作为闭环要求 | KMP 现已具备联系人列表、搜索、已有聊天进入、新聊天创建、返回刷新和 chats/snapshot 一致性 |
 
 ## S1 当前执行清单
 

@@ -10,6 +10,7 @@
 | Sync | 拉取、增量更新、缓存恢复 | `SyncCursor`, `SyncSnapshot` |
 | Search | 会话 / 消息检索 | `SearchQuery`, `SearchResult` |
 | Settings | 偏好项、主题、实验开关 | `UserPreference`, `FeatureFlag` |
+| Contacts | 联系人浏览、检索和发起会话 | `ContactSummary`, `ContactHandle`, `ContactChatLaunch` |
 | AI Overlay | AI 助手入口、上下文、结果展示 | `AiIntent`, `AiOutput`, `AiTrace` |
 
 ## 关键事件
@@ -24,6 +25,12 @@
 - `MessageSendFailed`
 - `SyncCompleted`
 - `SearchSubmitted`
+- `SettingsOpened`
+- `PreferenceChanged`
+- `ContactsOpened`
+- `ContactChatStarted`
+- `MediaPickerOpened`
+- `MediaMessageSent`
 - `AiActionTriggered`
 
 ## 关键状态机
@@ -64,6 +71,39 @@
 - `SyncSnapshotRestoreResult`: `Restored`、`NoSnapshot`、`Failed`
 - `SyncSnapshotSaveResult`: `Success`、`Failed`
 - `SyncRepository`: snapshot 读写与清空边界
+
+## S5 补充对象
+
+- `SearchQuery`: 全局搜索关键词
+- `MessageSearchHit`: 消息级搜索命中
+- `SearchLoadResult`: `Success`、`Empty`、`Failed`
+- `SearchRepository`: 全局搜索边界
+
+## S6 补充对象
+
+- `UserProfileSummary`: 设置页资料摘要
+- `PreferenceKey`: 偏好项标识
+- `UserPreference`: 单个偏好定义
+- `SettingsSnapshot`: profile 与 preferences 的组合
+- `SettingsLoadResult`: `Success`、`Failed`
+- `UpdatePreferenceResult`: `Success`、`Failed`
+- `SettingsRepository`: 设置读取、偏好写入边界
+
+## S7 补充对象
+
+- `MediaAttachment`: 图片 fixture 描述
+- `MediaPickerLoadResult`: `Success`、`Failed`
+- `SendMediaResult`: `Success`、`Failed`
+- `Message`: 扩展可选媒体负载
+- `ChatDetailRepository`: 扩展媒体选择与发送边界
+
+## S8 补充对象
+
+- `ContactSummary`: 联系人列表的轻量展示对象
+- `ContactsQuery`: 联系人搜索关键词
+- `ContactsLoadResult`: `Success`、`Empty`、`Failed`
+- `OpenContactChatResult`: `Success`、`Failed`
+- `ContactsRepository`: 联系人加载、搜索和发起聊天边界
 
 ### 会话列表
 

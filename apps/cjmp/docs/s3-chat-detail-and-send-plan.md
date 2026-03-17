@@ -14,6 +14,7 @@
 - CJMP 已接入 `S3` 详情页基础壳：
   - 固定顶部栏 + 状态行 + 消息流滚动区 + composer 固定区
   - 支持 debug-only 触发 loading / error / failed / retrying
+- 当前 review follow-ups 已登记到 `apps/cjmp/docs/review-followups.md`，优先解决发送态与返回列表承接的一致性问题
 - 设备侧 evidence 需要补齐：
   - detail loading / ready
   - send success / failed / retrying
@@ -37,6 +38,12 @@
 2. 从 `S2` 列表进入真实详情页，非 placeholder
 3. `S3` 的 loading / ready / sending / failed / retrying 形成设备证据
 4. 返回列表后会话预览与排序更新
+
+## Open TODO
+
+- `apps/cjmp/docs/review-followups.md`
+  - 先收敛 review 中暴露的 `preview overwrite`、`pending send`、`message rendering`、`thread reopen` 四个问题
+  - 完成后再补设备证据与 AI delivery log
 
 ## Verification Snapshot
 
